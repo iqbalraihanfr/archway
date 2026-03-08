@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { db, NodeData, NodeContent, Attachment } from '@/lib/db';
+import { generateTasksFromNode } from '@/lib/taskEngine';
+import { TaskBoardEditor } from '@/components/TaskBoardEditor';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -147,6 +149,34 @@ export function NodeEditorPanel({
         guided_fields: updatedFields,
         updated_at: now 
       } : null);
+
+      // --- Task Generation Engine ---
+      const updatedContent = {
+        ...content,
+        free_text: freeText,
+        mermaid_syntax: mermaidSyntax,
+        guided_fields: updatedFields,
+        updated_at: now
+      };
+      const generatedTasks = generateTasksFromNode(node, updatedContent, node.project_id);
+      
+      // Delete old auto-generated tasks for this node
+      const existingTasks = await db.tasks.where({ source_node_id: node.id }).toArray();
+      const autoTaskIds = existingTasks.filter(t => !t.is_manual).map(t => t.id);
+      if (autoTaskIds.length > 0) {
+        await db.tasks.bulkDelete(autoTaskIds);
+      }
+      
+      // Insert newly generated tasks
+      if (generatedTasks.length > 0) {
+        const tasksToInsert = generatedTasks.map((t: any) => ({
+          ...t,
+          id: crypto.randomUUID(),
+          created_at: now,
+          updated_at: now,
+        }));
+        await db.tasks.bulkAdd(tasksToInsert);
+      }
       
       setIsSaving(false);
       setLastSaved(new Date());
@@ -396,6 +426,10 @@ export function NodeEditorPanel({
 
   if (!node) return null;
 
+  if (node.type === 'task_board') {
+    return <TaskBoardEditor node={node} onClose={onClose} />;
+  }
+
   return (
     <div className="w-[600px] shrink-0 h-full bg-card flex flex-col shadow-[-10px_0_20px_-10px_rgba(0,0,0,0.1)] z-20 border-l relative transition-all">
       <div className="flex items-center justify-between p-4 border-b bg-muted/30 shrink-0">
@@ -432,7 +466,7 @@ export function NodeEditorPanel({
       </div>
 
       <div className="flex-1 overflow-hidden flex flex-col pt-2">
-        <Tabs defaultValue={isTextNode ? "guided" : (isDiagram ? "mermaid" : "text")} className="flex-1 flex flex-col w-full h-full">
+        <Tabs key={node.id} defaultValue={isTextNode ? "guided" : (isDiagram ? "mermaid" : "text")} className="flex-1 flex flex-col w-full h-full">
           <div className="px-4 shrink-0">
             <TabsList className="w-full flex">
               {isTextNode && <TabsTrigger className="flex-1 text-xs" value="guided">Guided</TabsTrigger>}

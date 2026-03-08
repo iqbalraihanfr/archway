@@ -14,7 +14,8 @@ import {
   Connection,
   addEdge,
   BackgroundVariant,
-  MiniMap
+  MiniMap,
+  SelectionMode
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -139,7 +140,10 @@ function WorkspaceContent({ projectId }: { projectId: string }) {
             
             // Trackpad / mouse navigation
             panOnScroll={true}           // Two-finger pan (like Excalidraw)
-            panOnDrag={true}             // Click-and-drag to pan
+            panOnDrag={[1, 2]}           // Middle/Right click-and-drag to pan (Default spacebar works too)
+            selectionOnDrag={true}       // Left click-and-drag builds a selection box
+            selectionMode={SelectionMode.Partial} // Box selection selects on touch
+            panActivationKeyCode="Space" // Hold spacebar to pan
             zoomOnScroll={false}         // Disable scroll-to-zoom (conflicts with pan)
             zoomOnPinch={true}           // Pinch-to-zoom on trackpad
             zoomOnDoubleClick={false}    // Disable double-click zoom (accidental triggers)
@@ -150,9 +154,6 @@ function WorkspaceContent({ projectId }: { projectId: string }) {
             
             // Smooth animations
             fitViewOptions={{ padding: 0.2, duration: 300 }}
-            
-            // Selection
-            selectionOnDrag={false}      // Don't start selection box on drag
             
             // Controls
             proOptions={{ hideAttribution: true }}
