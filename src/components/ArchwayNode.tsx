@@ -1,108 +1,306 @@
-import { memo } from 'react';
-import { Handle, Position } from '@xyflow/react';
-import { NodeData, ValidationWarning } from '@/lib/db';
-import { FileText, Database, CheckCircle2, Circle, Clock, AlertTriangle } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { memo } from "react";
+import { Handle, Position } from "@xyflow/react";
+import { NodeData, ValidationWarning } from "@/lib/db";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Circle,
+  Clock,
+  Database,
+  FileText,
+  FolderKanban,
+  GitBranch,
+  ListChecks,
+  ListTodo,
+  Network,
+  ScrollText,
+  Sparkles,
+  StickyNote,
+  Users,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 
-export const ArchwayNode = memo(({ data, selected }: { data: Record<string, unknown>, selected: boolean }) => {
-  const nodeData = data as unknown as NodeData & { isNext?: boolean, warnings?: ValidationWarning[] };
-  const getStatusIcon = (status: NodeData['status']) => {
-    switch (status) {
-      case 'Done': return <CheckCircle2 className="h-4 w-4 text-green-500" />;
-      case 'In Progress': return <Clock className="h-4 w-4 text-yellow-500" />;
-      default: return <Circle className="h-4 w-4 text-slate-400" />;
-    }
-  };
+type NodeVisualData = NodeData & {
+  isNext?: boolean;
+  warnings?: ValidationWarning[];
+};
 
-  const getTypeIcon = (type: string) => {
-    switch (type) {
-      case 'erd': return <Database className="h-5 w-5" />;
-      default: return <FileText className="h-5 w-5" />;
-    }
-  };
+const TYPE_LABELS: Record<string, string> = {
+  project_brief: "Project Brief",
+  requirements: "Requirements",
+  user_stories: "User Stories",
+  use_cases: "Use Cases",
+  flowchart: "Flowchart",
+  dfd: "DFD",
+  erd: "ERD",
+  sequence: "Sequence",
+  task_board: "Task Board",
+  summary: "Summary",
+  custom: "Notes",
+};
 
-  // Give each type a distinct color, like Opal
-  const getHeaderColor = (type: string) => {
-    switch (type) {
-      case 'erd': return 'bg-[#d2d7fb]'; // Soft purple for DB
-      case 'project_brief': return 'bg-[#e4faa0]'; // Yellow-green
-      case 'requirements': return 'bg-[#fbc1c1]'; // Soft red/orange
-      default: return 'bg-[#e4faa0]'; 
-    }
-  };
+export const ArchwayNode = memo(
+  ({
+    data,
+    selected,
+  }: {
+    data: Record<string, unknown>;
+    selected: boolean;
+  }) => {
+    const nodeData = data as unknown as NodeVisualData;
+    const warningCount = nodeData.warnings?.length || 0;
 
-  return (
-    <>
-      <Handle 
-        type="target" 
-        id="left" 
-        position={Position.Left} 
-        className="w-4 h-4 border-[3px] border-white rounded-full bg-black -left-2! top-6! z-10" 
-      />
-      <Handle 
-        type="target" 
-        id="top" 
-        position={Position.Top} 
-        className="w-4 h-4 border-[3px] border-white rounded-full bg-black -top-2! z-10" 
-      />
-      
-      <div
-        className={cn(
-          "flex flex-col rounded-[1.25rem] border-[3px] border-white overflow-hidden min-w-[280px] shadow-lg transition-all",
-          selected ? "ring-2 ring-primary/40 scale-[1.02]" : "ring-1 ring-black/5",
-          nodeData.isNext ? "animate-pulse shadow-[0_0_20px_rgba(228,250,160,0.5)]" : ""
-        )}
-      >
-        {/* Header Section */}
-        <div className={cn("flex items-center justify-between px-4 py-3 text-black", getHeaderColor(nodeData.type))}>
-          <div className="flex items-center gap-3">
-            {getTypeIcon(nodeData.type)}
-            <span className="font-bold text-[15px]">{nodeData.label}</span>
-          </div>
-          
-          <div className="flex items-center gap-2">
-            {nodeData.warnings && nodeData.warnings.length > 0 && (
-              <div 
-                className="flex items-center justify-center p-1 rounded-full bg-red-500/20 text-red-700"
-                title={`${nodeData.warnings.length} issues found`}
-              >
-                <AlertTriangle className="h-4 w-4" />
-              </div>
+    const getStatusIcon = (status: NodeData["status"]) => {
+      switch (status) {
+        case "Done":
+          return (
+            <CheckCircle2 className="h-4 w-4 text-[var(--status-success)]" />
+          );
+        case "In Progress":
+          return <Clock className="h-4 w-4 text-[var(--status-warning)]" />;
+        default:
+          return <Circle className="h-4 w-4 text-muted-foreground" />;
+      }
+    };
+
+    const getStatusLabel = (status: NodeData["status"]) => {
+      switch (status) {
+        case "Done":
+          return "Done";
+        case "In Progress":
+          return "In progress";
+        default:
+          return "Empty";
+      }
+    };
+
+    const getTypeIcon = (type: string) => {
+      switch (type) {
+        case "erd":
+          return <Database className="h-5 w-5" />;
+        case "requirements":
+          return <ListChecks className="h-5 w-5" />;
+        case "user_stories":
+          return <Users className="h-5 w-5" />;
+        case "use_cases":
+          return <GitBranch className="h-5 w-5" />;
+        case "flowchart":
+          return <Network className="h-5 w-5" />;
+        case "dfd":
+          return <ScrollText className="h-5 w-5" />;
+        case "sequence":
+          return <Sparkles className="h-5 w-5" />;
+        case "task_board":
+          return <FolderKanban className="h-5 w-5" />;
+        case "summary":
+          return <ListTodo className="h-5 w-5" />;
+        case "custom":
+          return <StickyNote className="h-5 w-5" />;
+        default:
+          return <FileText className="h-5 w-5" />;
+      }
+    };
+
+    const getHeaderColor = (type: string) => {
+      switch (type) {
+        case "project_brief":
+          return "bg-[var(--node-brief)]";
+        case "requirements":
+          return "bg-[var(--node-requirements)]";
+        case "user_stories":
+          return "bg-[var(--node-stories)]";
+        case "use_cases":
+          return "bg-[var(--node-use-cases)]";
+        case "flowchart":
+          return "bg-[var(--node-flowchart)]";
+        case "dfd":
+          return "bg-[var(--node-dfd)]";
+        case "erd":
+          return "bg-[var(--node-erd)]";
+        case "sequence":
+          return "bg-[var(--node-sequence)]";
+        case "task_board":
+          return "bg-[var(--node-task-board)]";
+        case "summary":
+          return "bg-[var(--node-summary)]";
+        default:
+          return "bg-[var(--node-custom)]";
+      }
+    };
+
+    const getNodeMeta = (type: string) => {
+      switch (type) {
+        case "project_brief":
+          return "Project context";
+        case "requirements":
+          return "System rules";
+        case "user_stories":
+          return "User goals";
+        case "use_cases":
+          return "Actor flows";
+        case "flowchart":
+          return "Process map";
+        case "dfd":
+          return "Data movement";
+        case "erd":
+          return "Data model";
+        case "sequence":
+          return "Interaction flow";
+        case "task_board":
+          return "Execution plan";
+        case "summary":
+          return "Delivery review";
+        default:
+          return "Working notes";
+      }
+    };
+
+    const actionLabel =
+      nodeData.type === "project_brief"
+        ? "Open brief"
+        : nodeData.type === "summary"
+          ? "Review summary"
+          : nodeData.type === "task_board"
+            ? "Open task board"
+            : nodeData.status === "Done"
+              ? "Review"
+              : nodeData.status === "In Progress"
+                ? "Continue"
+                : "Start";
+
+    return (
+      <>
+        <Handle
+          type="target"
+          id="left"
+          position={Position.Left}
+          className="w-4 h-4 border-[3px] border-white rounded-full bg-black -left-2! top-7! z-10"
+        />
+        <Handle
+          type="target"
+          id="top"
+          position={Position.Top}
+          className="w-4 h-4 border-[3px] border-white rounded-full bg-black -top-2! z-10"
+        />
+
+        <div
+          className={cn(
+            "flex min-w-[320px] max-w-[340px] flex-col overflow-hidden rounded-[1.45rem] border border-border/70 bg-card shadow-[0_18px_45px_-28px_rgba(15,23,42,0.55)] transition-all duration-200",
+            selected
+              ? "scale-[1.02] ring-2 ring-primary/35 shadow-[0_24px_54px_-28px_rgba(15,23,42,0.65)]"
+              : "ring-1 ring-black/5 hover:-translate-y-0.5 hover:shadow-[0_20px_50px_-28px_rgba(15,23,42,0.55)]",
+            nodeData.isNext ? "focus-guidance focus-guidance-ring" : "",
+          )}
+        >
+          <div
+            className={cn(
+              "flex items-start justify-between gap-3 px-4 py-3 text-black",
+              getHeaderColor(nodeData.type),
             )}
-            
-            {/* Using a play/triangle icon to mimic Opal */}
-            <div className="text-black/50 ml-1">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M5 3l14 9-14 9V3z" />
-              </svg>
+          >
+            <div className="min-w-0 space-y-2">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-black/10 text-black">
+                  {getTypeIcon(nodeData.type)}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-readable-xs font-semibold uppercase tracking-[0.16em] text-black/65">
+                    {TYPE_LABELS[nodeData.type] || "Node"}
+                  </p>
+                  <h3 className="truncate text-base font-bold leading-tight">
+                    {nodeData.label}
+                  </h3>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="rounded-full bg-black/10 px-2.5 py-1 text-readable-xs font-medium text-black/75">
+                  {getNodeMeta(nodeData.type)}
+                </span>
+                {nodeData.isNext && (
+                  <span className="rounded-full bg-black/85 px-2.5 py-1 text-readable-xs font-semibold uppercase tracking-[0.12em] text-white">
+                    Start here
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 pt-0.5">
+              {warningCount > 0 && (
+                <div
+                  className="flex items-center gap-1 rounded-full bg-red-500/15 px-2.5 py-1 text-readable-xs font-semibold text-red-800"
+                  title={`${warningCount} issues found`}
+                >
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  <span>
+                    {warningCount} issue{warningCount > 1 ? "s" : ""}
+                  </span>
+                </div>
+              )}
+
+              <div className="rounded-full bg-black/10 p-1.5 text-black/55">
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path d="M5 3l14 9-14 9V3z" />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-3 border-t border-black/10 bg-card px-4 py-3 text-card-foreground">
+            <div className="min-w-0">
+              <p className="text-readable-xs uppercase tracking-[0.14em] text-muted-foreground">
+                Next action
+              </p>
+              <p className="truncate text-[15px] font-semibold tracking-wide text-foreground">
+                {actionLabel}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <div
+                className={cn(
+                  "rounded-full px-2.5 py-1 text-readable-xs font-semibold",
+                  nodeData.status === "Done"
+                    ? "bg-[color:color-mix(in_oklch,var(--status-success)_14%,transparent)] text-[var(--status-success)]"
+                    : nodeData.status === "In Progress"
+                      ? "bg-[color:color-mix(in_oklch,var(--status-warning)_14%,transparent)] text-[var(--status-warning)]"
+                      : "bg-muted text-muted-foreground",
+                )}
+              >
+                {getStatusLabel(nodeData.status)}
+              </div>
+
+              <div
+                className="flex items-center justify-center rounded-full bg-muted/70 p-1.5"
+                title={`Status: ${nodeData.status}`}
+              >
+                {getStatusIcon(nodeData.status)}
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Content Section */}
-        <div className="flex items-center justify-between px-4 py-3 bg-[#333333] text-zinc-300">
-           <span className="text-sm font-medium tracking-wide font-sans">{nodeData.type === 'project_brief' ? 'Initialize' : 'Generate'}</span>
-           
-           <div className="ml-3" title={`Status: ${nodeData.status}`}>
-             {getStatusIcon(nodeData.status)}
-           </div>
-        </div>
-      </div>
+        <Handle
+          type="source"
+          id="right"
+          position={Position.Right}
+          className="w-4 h-4 border-[3px] border-white rounded-full bg-black -right-2! top-7! z-10"
+        />
+        <Handle
+          type="source"
+          id="bottom"
+          position={Position.Bottom}
+          className="w-4 h-4 border-[3px] border-white rounded-full bg-black -bottom-2! z-10"
+        />
+      </>
+    );
+  },
+);
 
-      <Handle 
-        type="source" 
-        id="right" 
-        position={Position.Right} 
-        className="w-4 h-4 border-[3px] border-white rounded-full bg-black -right-2! top-6! z-10" 
-      />
-      <Handle 
-        type="source" 
-        id="bottom" 
-        position={Position.Bottom} 
-        className="w-4 h-4 border-[3px] border-white rounded-full bg-black -bottom-2! z-10" 
-      />
-    </>
-  );
-});
-
-ArchwayNode.displayName = 'ArchwayNode';
+ArchwayNode.displayName = "ArchwayNode";
