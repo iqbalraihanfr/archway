@@ -5,8 +5,10 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { X, RefreshCw, Plus, Trash2, CheckCircle2 } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { X, RefreshCw, Plus, Trash2, CheckCircle2, Download } from 'lucide-react';
 import { generateTasksFromNode } from '@/lib/taskEngine';
+import { exportTasksToCSV, exportTasksToJSON, exportTasksToLinearCSV, exportTasksToMarkdown } from '@/lib/exportEngine';
 
 export function TaskBoardEditor({
   node,
@@ -18,7 +20,7 @@ export function TaskBoardEditor({
   const [tasks, setTasks] = useState<TaskData[]>([]);
   const [nodes, setNodes] = useState<NodeData[]>([]);
   const [isRegenerating, setIsRegenerating] = useState(false);
-  const [grouping, setGrouping] = useState<'flat' | 'source' | 'status'>('source');
+  const [grouping, setGrouping] = useState<'flat' | 'source' | 'layer' | 'status'>('layer');
 
   // Load Tasks
   const loadTasks = async () => {
@@ -52,6 +54,7 @@ export function TaskBoardEditor({
       description: '',
       group_key: 'Manual',
       priority: 'should',
+      status: 'todo',
       labels: [],
       is_manual: true,
       sort_order: tasks.length,
@@ -113,6 +116,12 @@ export function TaskBoardEditor({
       if (!groupedTasks[sourceNodeName]) groupedTasks[sourceNodeName] = [];
       groupedTasks[sourceNodeName].push(task);
     });
+  } else if (grouping === 'layer') {
+    tasks.forEach(task => {
+      const layer = task.group_key || 'Other';
+      if (!groupedTasks[layer]) groupedTasks[layer] = [];
+      groupedTasks[layer].push(task);
+    });
   } else if (grouping === 'status') {
      // A simplified status mapping for demonstration (since TaskData primarily uses priority now)
      tasks.forEach(task => {
@@ -146,12 +155,32 @@ export function TaskBoardEditor({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="source">Source Node</SelectItem>
+              <SelectItem value="layer">Architecture Layer</SelectItem>
               <SelectItem value="status">Priority</SelectItem>
               <SelectItem value="flat">Flat List</SelectItem>
             </SelectContent>
           </Select>
         </div>
         <div className="flex items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger className="hidden sm:flex h-8 items-center justify-center rounded-md border border-input bg-background px-3 text-xs font-medium ring-offset-background transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50">
+              <Download className="h-4 w-4 mr-2" /> Export
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => exportTasksToMarkdown(tasks, "Archway-Tasks")}>
+                Markdown Checklist
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportTasksToCSV(tasks, "Archway")}>
+                CSV (Spreadsheet)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportTasksToLinearCSV(tasks, "Archway")}>
+                CSV (Linear Import)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportTasksToJSON(tasks, "Archway")}>
+                JSON File
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button size="sm" variant="outline" onClick={addManualTask}>
             <Plus className="h-4 w-4 mr-1" /> Add Task
           </Button>

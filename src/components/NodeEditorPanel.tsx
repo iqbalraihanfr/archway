@@ -1,18 +1,30 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { db, NodeData, NodeContent, Attachment } from '@/lib/db';
 import { generateTasksFromNode } from '@/lib/taskEngine';
+import { crossValidateAll } from '@/lib/validationEngine';
 import { TaskBoardEditor } from '@/components/TaskBoardEditor';
+import { SummaryNodeEditor } from '@/components/SummaryNodeEditor';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
-import { X, Save, Loader2, Check, UploadCloud, File, Trash2, Plus } from 'lucide-react';
+import { X, Save, Loader2, Check, UploadCloud, File, Trash2, Plus, Download } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 import mermaid from 'mermaid';
 import CodeMirror from '@uiw/react-codemirror';
 import { javascript } from '@codemirror/lang-javascript';
+import { exportDiagramToPNG } from '@/lib/exportEngine';
+import { ProjectBriefEditor } from '@/components/editors/ProjectBriefEditor';
+import { RequirementEditor } from '@/components/editors/RequirementEditor';
+import { UserStoryEditor } from '@/components/editors/UserStoryEditor';
+import { UseCaseEditor } from '@/components/editors/UseCaseEditor';
+import { ERDEditor } from '@/components/editors/ERDEditor';
+import { SequenceEditor } from '@/components/editors/SequenceEditor';
+import { FlowchartEditor } from '@/components/editors/FlowchartEditor';
+import { DFDEditor } from '@/components/editors/DFDEditor';
+import { generateMermaid } from '@/lib/diagramGenerators';
 
 // Initial mermaid templates
 const MERMAID_TEMPLATES: Record<string, string> = {
@@ -35,9 +47,11 @@ mermaid.initialize({
 export function NodeEditorPanel({
   node,
   onClose,
+  onDelete
 }: {
   node: NodeData;
   onClose: () => void;
+  onDelete?: () => void;
 }) {
   const [content, setContent] = useState<NodeContent | null>(null);
   const [status, setStatus] = useState<NodeData['status']>(node.status);
@@ -60,7 +74,7 @@ export function NodeEditorPanel({
 
   const isDiagram = DIAGRAM_NODES.includes(node.type);
   const isErd = node.type === 'erd';
-  const isTextNode = ['project_brief', 'requirements', 'user_stories'].includes(node.type);
+  const hasGuidedEditor = ['project_brief', 'requirements', 'user_stories', 'use_cases', 'erd', 'sequence', 'flowchart', 'dfd'].includes(node.type);
 
   // Load content & attachments
   useEffect(() => {
@@ -75,9 +89,9 @@ export function NodeEditorPanel({
         const initialContent: NodeContent = {
           id: newId,
           node_id: node.id,
-          guided_fields: {},
-          free_text: "",
-          mermaid_syntax: isDiagram ? (MERMAID_TEMPLATES[node.type] || "") : "",
+          structured_fields: {},
+          mermaid_auto: isDiagram ? (MERMAID_TEMPLATES[node.type] || "") : "",
+          mermaid_manual: "",
           updated_at: now
         };
         await db.nodeContents.add(initialContent);
@@ -88,11 +102,42 @@ export function NodeEditorPanel({
       
       if (isMounted) {
         setContent(data);
-        setFreeText(data.free_text || "");
-        setMermaidSyntax(data.mermaid_syntax || "");
-        // Optional: SQL schema logic could use guided_fields.sql
-        setSqlSchema(data.guided_fields?.sql || "");
-        setGuidedFields(data.guided_fields || {});
+        setFreeText(data.structured_fields?.notes || "");
+        setMermaidSyntax(data.mermaid_manual || data.mermaid_auto || "");
+        setSqlSchema(data.structured_fields?.sql || "");
+
+        // Migrate old Brief field names to v3 structured format
+        let sf = data.structured_fields || {};
+        if (node.type === 'project_brief') {
+          let migrated = false;
+          if (sf.description && !sf.background) { sf = { ...sf, background: sf.description }; delete sf.description; migrated = true; }
+          if (typeof sf.target_user === 'string' && !sf.target_users) {
+            sf = { ...sf, target_users: sf.target_user.split(',').map((s: string) => s.trim()).filter(Boolean) };
+            delete sf.target_user;
+            migrated = true;
+          }
+          if (typeof sf.scope === 'string' && !sf.scope_in) {
+            sf = { ...sf, scope_in: sf.scope ? [sf.scope] : [] };
+            delete sf.scope;
+            migrated = true;
+          }
+          if (typeof sf.success_metrics === 'string' && !Array.isArray(sf.success_metrics)) {
+            sf = { ...sf, success_metrics: sf.success_metrics ? [{ metric: sf.success_metrics, target: '' }] : [] };
+            migrated = true;
+          }
+          if (typeof sf.constraints === 'string' && !Array.isArray(sf.constraints)) {
+            sf = { ...sf, constraints: sf.constraints ? [sf.constraints] : [] };
+            migrated = true;
+          }
+          if (typeof sf.tech_stack === 'string' && !Array.isArray(sf.tech_stack)) {
+            sf = { ...sf, tech_stack: sf.tech_stack.split(',').map((s: string) => s.trim()).filter(Boolean) };
+            migrated = true;
+          }
+          if (migrated) {
+            await db.nodeContents.update(data.id, { structured_fields: sf });
+          }
+        }
+        setGuidedFields(sf);
         setAttachments(atts);
       }
     };
@@ -114,15 +159,17 @@ export function NodeEditorPanel({
     if (!content) return;
     
     // Compare guided fields (excluding runtime sql which is separate)
-    const { sql: _sql, ...restGuidedFields } = guidedFields;
-    const { sql: _contentSql, ...restContentGuidedFields } = content.guided_fields || {};
+    const { sql: _sql, notes: _notes, ...restGuidedFields } = guidedFields;
+    const { sql: _contentSql, notes: _cNotes, ...restContentGuidedFields } = content.structured_fields || {};
 
-    const hasChanges = freeText !== content.free_text || 
-                       mermaidSyntax !== content.mermaid_syntax ||
-                       sqlSchema !== (content.guided_fields?.sql || "") ||
+    const hasChanges = freeText !== (content.structured_fields?.notes || "") || 
+                       mermaidSyntax !== (content.mermaid_manual || content.mermaid_auto || "") ||
+                       sqlSchema !== (content.structured_fields?.sql || "") ||
                        JSON.stringify(restGuidedFields) !== JSON.stringify(restContentGuidedFields);
                        
-    if (!hasChanges) return;
+    const autoMermaid = isDiagram ? generateMermaid(node.type, guidedFields) : content.mermaid_auto;
+
+    if (!hasChanges && autoMermaid === content.mermaid_auto) return;
 
     if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current);
 
@@ -131,52 +178,86 @@ export function NodeEditorPanel({
       const now = new Date().toISOString();
       const updatedFields = {
         ...guidedFields,
+        notes: freeText,
         sql: sqlSchema
       };
       
       await db.nodeContents.update(content.id, {
-        free_text: freeText,
-        mermaid_syntax: mermaidSyntax,
-        guided_fields: updatedFields,
+        mermaid_manual: mermaidSyntax,
+        mermaid_auto: autoMermaid,
+        structured_fields: updatedFields,
         updated_at: now
       });
       await db.nodes.update(node.id, { updated_at: now });
       
       setContent(prev => prev ? { 
         ...prev, 
-        free_text: freeText, 
-        mermaid_syntax: mermaidSyntax, 
-        guided_fields: updatedFields,
+        mermaid_manual: mermaidSyntax, 
+        mermaid_auto: autoMermaid,
+        structured_fields: updatedFields,
         updated_at: now 
       } : null);
 
       // --- Task Generation Engine ---
       const updatedContent = {
         ...content,
-        free_text: freeText,
-        mermaid_syntax: mermaidSyntax,
-        guided_fields: updatedFields,
+        mermaid_manual: mermaidSyntax,
+        mermaid_auto: autoMermaid,
+        structured_fields: updatedFields,
         updated_at: now
       };
       const generatedTasks = generateTasksFromNode(node, updatedContent, node.project_id);
       
-      // Delete old auto-generated tasks for this node
       const existingTasks = await db.tasks.where({ source_node_id: node.id }).toArray();
-      const autoTaskIds = existingTasks.filter(t => !t.is_manual).map(t => t.id);
-      if (autoTaskIds.length > 0) {
-        await db.tasks.bulkDelete(autoTaskIds);
+      const existingAutoTasksMap = new Map();
+      
+      existingTasks.forEach(t => {
+        if (!t.is_manual && t.source_item_id) {
+           existingAutoTasksMap.set(t.source_item_id, t);
+        }
+      });
+      
+      const tasksToPut: any[] = [];
+      const tasksToKeepIds = new Set<string>();
+      
+      for (const gt of generatedTasks) {
+        if (gt.source_item_id && existingAutoTasksMap.has(gt.source_item_id)) {
+           // update title/desc but keep status/labels
+           const existing = existingAutoTasksMap.get(gt.source_item_id);
+           tasksToPut.push({
+             ...existing,
+             title: gt.title,
+             description: gt.description,
+             group_key: gt.group_key,
+             priority: gt.priority,
+             updated_at: now
+           });
+           tasksToKeepIds.add(existing.id);
+        } else {
+           // insert new
+           tasksToPut.push({
+             ...gt,
+             id: crypto.randomUUID(),
+             created_at: now,
+             updated_at: now,
+           });
+        }
       }
       
-      // Insert newly generated tasks
-      if (generatedTasks.length > 0) {
-        const tasksToInsert = generatedTasks.map((t: any) => ({
-          ...t,
-          id: crypto.randomUUID(),
-          created_at: now,
-          updated_at: now,
-        }));
-        await db.tasks.bulkAdd(tasksToInsert);
+      // Delete auto tasks that are no longer generated
+      const autoTaskIdsToDelete = existingTasks
+         .filter(t => !t.is_manual && !tasksToKeepIds.has(t.id))
+         .map(t => t.id);
+         
+      if (autoTaskIdsToDelete.length > 0) {
+         await db.tasks.bulkDelete(autoTaskIdsToDelete);
       }
+      if (tasksToPut.length > 0) {
+         await db.tasks.bulkPut(tasksToPut);
+      }
+      
+      // Run cross project validation
+      await crossValidateAll(node.project_id);
       
       setIsSaving(false);
       setLastSaved(new Date());
@@ -248,186 +329,16 @@ export function NodeEditorPanel({
     else return (bytes / 1048576).toFixed(1) + ' MB';
   };
 
-  const renderProjectBriefForm = () => (
-    <div className="flex flex-col gap-4 p-4 overflow-y-auto w-full h-full">
-      <div className="space-y-2">
-        <Label>Project Name</Label>
-        <Input value={guidedFields.name || ''} onChange={(e) => setGuidedFields({...guidedFields, name: e.target.value})} placeholder="e.g. Toko Online" className="bg-background"/>
-      </div>
-      <div className="space-y-2">
-        <Label>Description</Label>
-        <Textarea value={guidedFields.description || ''} onChange={(e) => setGuidedFields({...guidedFields, description: e.target.value})} placeholder="Briefly describe the project..." className="min-h-[80px] bg-background"/>
-      </div>
-      <div className="space-y-2">
-        <Label>Scope (In/Out)</Label>
-        <Textarea value={guidedFields.scope || ''} onChange={(e) => setGuidedFields({...guidedFields, scope: e.target.value})} placeholder="What is in scope? What is out of scope?" className="min-h-[80px] bg-background"/>
-      </div>
-      <div className="space-y-2">
-        <Label>Target User</Label>
-        <Input value={guidedFields.target_user || ''} onChange={(e) => setGuidedFields({...guidedFields, target_user: e.target.value})} placeholder="Who is this for?" className="bg-background"/>
-      </div>
-      <div className="space-y-2">
-        <Label>Tech Stack</Label>
-        <Input value={guidedFields.tech_stack || ''} onChange={(e) => setGuidedFields({...guidedFields, tech_stack: e.target.value})} placeholder="e.g. Next.js, Tailwind, PostgreSQL" className="bg-background"/>
-      </div>
-    </div>
-  );
-
-  const renderRequirementsForm = () => {
-    const items = guidedFields.items || [];
-    return (
-      <div className="flex flex-col gap-4 p-4 overflow-y-auto w-full h-full">
-        <div className="flex items-center justify-between mb-2 shrink-0">
-          <Label className="text-sm font-semibold">Requirements (MoSCoW)</Label>
-          <Button size="sm" variant="outline" onClick={() => {
-            setGuidedFields({
-              ...guidedFields, 
-              items: [...items, { id: crypto.randomUUID(), description: '', priority: 'Must' }]
-            })
-          }}>
-            <Plus className="h-4 w-4 mr-2" /> Add 
-          </Button>
-        </div>
-        {items.length === 0 && (
-          <div className="text-center p-8 border-2 border-dashed rounded-lg text-muted-foreground text-sm shrink-0">
-            No requirements yet. Click Add to create one.
-          </div>
-        )}
-        <div className="space-y-3 shrink-0 pb-4">
-          {items.map((item: any, index: number) => (
-            <div key={item.id} className="flex items-start gap-2 p-3 border rounded-md bg-background shadow-sm">
-              <div className="flex-1 space-y-2">
-                <Textarea 
-                  value={item.description} 
-                  onChange={(e) => {
-                    const newItems = [...items];
-                    newItems[index].description = e.target.value;
-                    setGuidedFields({...guidedFields, items: newItems});
-                  }}
-                  placeholder="Requirement description..."
-                  className="min-h-[60px] resize-none"
-                />
-              </div>
-              <div className="w-[120px] shrink-0 space-y-2 flex flex-col items-end">
-                <Select 
-                  value={item.priority} 
-                  onValueChange={(val) => {
-                    const newItems = [...items];
-                    newItems[index].priority = val;
-                    setGuidedFields({...guidedFields, items: newItems});
-                  }}
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Priority" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Must">Must</SelectItem>
-                    <SelectItem value="Should">Should</SelectItem>
-                    <SelectItem value="Could">Could</SelectItem>
-                    <SelectItem value="Won't">Won't</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                  onClick={() => {
-                    const newItems = items.filter((_: any, i: number) => i !== index);
-                    setGuidedFields({...guidedFields, items: newItems});
-                  }}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  };
-
-  const renderUserStoriesForm = () => {
-    const items = guidedFields.items || [];
-    return (
-      <div className="flex flex-col gap-4 p-4 overflow-y-auto w-full h-full">
-        <div className="flex items-center justify-between mb-2 shrink-0">
-          <Label className="text-sm font-semibold">User Stories</Label>
-          <Button size="sm" variant="outline" onClick={() => {
-            setGuidedFields({
-              ...guidedFields, 
-              items: [...items, { id: crypto.randomUUID(), role: '', goal: '', benefit: '' }]
-            })
-          }}>
-            <Plus className="h-4 w-4 mr-2" /> Add 
-          </Button>
-        </div>
-        {items.length === 0 && (
-          <div className="text-center p-8 border-2 border-dashed rounded-lg text-muted-foreground text-sm shrink-0">
-            No user stories yet. Click Add to create one.
-          </div>
-        )}
-        <div className="space-y-3 shrink-0 pb-4">
-          {items.map((item: any, index: number) => (
-            <div key={item.id} className="flex flex-col gap-3 p-4 border rounded-md bg-background relative shadow-sm">
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="absolute top-2 right-2 h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                onClick={() => {
-                  const newItems = items.filter((_: any, i: number) => i !== index);
-                  setGuidedFields({...guidedFields, items: newItems});
-                }}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-              
-              <div className="grid gap-2 pr-10">
-                <Label className="text-xs text-muted-foreground">As a...</Label>
-                <Input 
-                  value={item.role} 
-                  onChange={(e) => {
-                    const newItems = [...items];
-                    newItems[index].role = e.target.value;
-                    setGuidedFields({...guidedFields, items: newItems});
-                  }}
-                  placeholder="e.g. Administrator"
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label className="text-xs text-muted-foreground">I want...</Label>
-                <Input 
-                  value={item.goal} 
-                  onChange={(e) => {
-                    const newItems = [...items];
-                    newItems[index].goal = e.target.value;
-                    setGuidedFields({...guidedFields, items: newItems});
-                  }}
-                  placeholder="e.g. to manage user roles"
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label className="text-xs text-muted-foreground">So that...</Label>
-                <Input 
-                  value={item.benefit} 
-                  onChange={(e) => {
-                    const newItems = [...items];
-                    newItems[index].benefit = e.target.value;
-                    setGuidedFields({...guidedFields, items: newItems});
-                  }}
-                  placeholder="e.g. I can restrict access to sensitive data"
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  };
+  // Old inline forms removed
 
   if (!node) return null;
 
   if (node.type === 'task_board') {
     return <TaskBoardEditor node={node} onClose={onClose} />;
+  }
+
+  if (node.type === 'summary') {
+    return <SummaryNodeEditor node={node} onClose={onClose} />;
   }
 
   return (
@@ -451,25 +362,32 @@ export function NodeEditorPanel({
         </div>
       </div>
 
-      <div className="p-4 border-b shrink-0 flex items-center gap-4">
-        <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide shrink-0">Status</Label>
-        <Select value={status} onValueChange={handleStatusChange}>
-          <SelectTrigger className="w-[180px] h-8 text-xs">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="Empty">Empty</SelectItem>
-            <SelectItem value="In Progress">In Progress</SelectItem>
-            <SelectItem value="Done">Done</SelectItem>
-          </SelectContent>
-        </Select>
+      <div className="p-4 border-b shrink-0 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide shrink-0">Status</Label>
+          <Select value={status} onValueChange={handleStatusChange}>
+            <SelectTrigger className="w-[180px] h-8 text-xs">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Empty">Empty</SelectItem>
+              <SelectItem value="In Progress">In Progress</SelectItem>
+              <SelectItem value="Done">Done</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        {onDelete && (
+          <Button variant="ghost" size="sm" onClick={onDelete} className="text-muted-foreground hover:text-destructive hover:bg-destructive/10">
+            <Trash2 className="h-4 w-4 mr-1" /> Delete
+          </Button>
+        )}
       </div>
 
       <div className="flex-1 overflow-hidden flex flex-col pt-2">
-        <Tabs key={node.id} defaultValue={isTextNode ? "guided" : (isDiagram ? "mermaid" : "text")} className="flex-1 flex flex-col w-full h-full">
+        <Tabs key={node.id} defaultValue={hasGuidedEditor ? "guided" : "text"} className="flex-1 flex flex-col w-full h-full">
           <div className="px-4 shrink-0">
             <TabsList className="w-full flex">
-              {isTextNode && <TabsTrigger className="flex-1 text-xs" value="guided">Guided</TabsTrigger>}
+              {hasGuidedEditor && <TabsTrigger className="flex-1 text-xs" value="guided">Guided</TabsTrigger>}
               {isDiagram && <TabsTrigger className="flex-1 text-xs" value="mermaid">Mermaid</TabsTrigger>}
               {isErd && <TabsTrigger className="flex-1 text-xs" value="sql">SQL</TabsTrigger>}
               <TabsTrigger className="flex-1 text-xs" value="text">Notes</TabsTrigger>
@@ -478,18 +396,29 @@ export function NodeEditorPanel({
           </div>
           
           <div className="flex-1 overflow-hidden relative">
-            {/* Guided Tab */}
-            {isTextNode && (
-              <TabsContent value="guided" className="m-0 absolute inset-0 overflow-y-auto bg-muted/5">
-                {node.type === 'project_brief' && renderProjectBriefForm()}
-                {node.type === 'requirements' && renderRequirementsForm()}
-                {node.type === 'user_stories' && renderUserStoriesForm()}
+            {/* Guided Tab — primary data source */}
+            {hasGuidedEditor && (
+              <TabsContent value="guided" className="m-0 absolute inset-0 overflow-hidden bg-muted/5 flex flex-col">
+                <div className="px-4 pt-3 pb-1 shrink-0">
+                  <p className="text-[10px] text-muted-foreground bg-primary/5 border border-primary/10 rounded px-2 py-1">Data utama — isi di sini untuk generate diagram, tasks, validasi, dan export otomatis.</p>
+                </div>
+                <div className="flex-1 overflow-hidden">
+                  {node.type === 'project_brief' && <ProjectBriefEditor fields={guidedFields} onChange={setGuidedFields} projectId={node.project_id} />}
+                  {node.type === 'requirements' && <RequirementEditor fields={guidedFields} onChange={setGuidedFields} projectId={node.project_id} />}
+                  {node.type === 'user_stories' && <UserStoryEditor fields={guidedFields} onChange={setGuidedFields} projectId={node.project_id} />}
+                  {node.type === 'use_cases' && <UseCaseEditor fields={guidedFields} onChange={setGuidedFields} projectId={node.project_id} />}
+                  {node.type === 'erd' && <ERDEditor fields={guidedFields} onChange={setGuidedFields} projectId={node.project_id} />}
+                  {node.type === 'sequence' && <SequenceEditor fields={guidedFields} onChange={setGuidedFields} projectId={node.project_id} />}
+                  {node.type === 'flowchart' && <FlowchartEditor fields={guidedFields} onChange={setGuidedFields} projectId={node.project_id} />}
+                  {node.type === 'dfd' && <DFDEditor fields={guidedFields} onChange={setGuidedFields} projectId={node.project_id} />}
+                </div>
               </TabsContent>
             )}
 
-            {/* Mermaid Tab */}
+            {/* Mermaid Tab — auto-generated, manual override possible */}
             {isDiagram && (
               <TabsContent value="mermaid" className="m-0 absolute inset-0 flex flex-col gap-4 p-4 overflow-hidden">
+                <p className="text-[10px] text-muted-foreground bg-muted/50 border rounded px-2 py-1 shrink-0">Auto-generated dari Guided tab. Edit manual di sini tidak akan balik ke Guided.</p>
                 <div className="flex-1 border rounded-md overflow-hidden bg-background">
                   <CodeMirror
                     value={mermaidSyntax}
@@ -501,17 +430,28 @@ export function NodeEditorPanel({
                   />
                 </div>
                 <div className="flex-1 border rounded-md bg-secondary/20 p-4 overflow-auto flex items-center justify-center relative">
-                  {mermaidError && (
+                  {!mermaidError && (
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => {
+                        if (mermaidRef.current) exportDiagramToPNG(mermaidRef.current, `${node.label}-diagram`);
+                      }}
+                      className="absolute top-2 right-2 text-xs h-7 opacity-50 hover:opacity-100"
+                    >
+                      <Download className="h-3 w-3 mr-1" /> Export PNG
+                    </Button>
+                  )}
+                  {mermaidError ? (
                     <div className="absolute inset-0 bg-background/90 p-4 text-destructive font-mono text-xs overflow-auto z-10 whitespace-pre-wrap">
                       <div className="font-bold mb-2 uppercase">Syntax Error</div>
                       {mermaidError}
                     </div>
-                  )}
-                  {mermaidSvg && (
+                  ) : (
                     <div 
-                      ref={mermaidRef} 
-                      className="w-full h-full flex items-center justify-center [&_svg]:max-w-full [&_svg]:max-h-full"
+                      ref={mermaidRef}
                       dangerouslySetInnerHTML={{ __html: mermaidSvg }} 
+                      className="w-full h-full flex items-center justify-center mermaid-preview bg-white"
                     />
                   )}
                   {!mermaidSvg && !mermaidError && (
@@ -521,9 +461,10 @@ export function NodeEditorPanel({
               </TabsContent>
             )}
 
-            {/* SQL Tab (ERD Only) */}
+            {/* SQL Tab (ERD Only) — reference only */}
             {isErd && (
               <TabsContent value="sql" className="m-0 absolute inset-0 flex flex-col gap-2 p-4">
+                <p className="text-[10px] text-muted-foreground bg-muted/50 border rounded px-2 py-1">Referensi — paste SQL di sini sebagai catatan. Belum di-parse otomatis ke Guided.</p>
                 <Label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">Paste SQL CREATE TABLE statements</Label>
                 <Textarea 
                   className="flex-1 font-mono text-sm resize-none whitespace-pre bg-background" 
@@ -534,8 +475,9 @@ export function NodeEditorPanel({
               </TabsContent>
             )}
 
-            {/* Notes Tab */}
-            <TabsContent value="text" className="m-0 absolute inset-0 flex flex-col p-4">
+            {/* Notes Tab — free text reference */}
+            <TabsContent value="text" className="m-0 absolute inset-0 flex flex-col gap-2 p-4">
+              <p className="text-[10px] text-muted-foreground bg-muted/50 border rounded px-2 py-1 shrink-0">Catatan bebas — tidak mempengaruhi diagram, tasks, atau validasi.</p>
               <Textarea 
                 className="flex-1 font-mono text-sm resize-none bg-background shadow-inner" 
                 placeholder="Additional free text context..."
@@ -544,8 +486,9 @@ export function NodeEditorPanel({
               />
             </TabsContent>
 
-            {/* Attachments Tab */}
+            {/* Attachments Tab — file storage reference */}
             <TabsContent value="attachments" className="m-0 absolute inset-0 flex flex-col gap-4 p-4 overflow-y-auto">
+              <p className="text-[10px] text-muted-foreground bg-muted/50 border rounded px-2 py-1 shrink-0">Simpan dokumen referensi (BQ, quotation, mockup). File tidak di-parse otomatis.</p>
               <div 
                 {...getRootProps()} 
                 className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-colors ${isDragActive ? 'border-primary bg-primary/5' : 'border-muted-foreground/25 hover:border-primary/50 hover:bg-secondary/50'}`}
