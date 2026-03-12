@@ -22,7 +22,6 @@ import {
   addEdge,
   BackgroundVariant,
   MiniMap,
-  SelectionMode,
   MarkerType,
   useReactFlow,
 } from "@xyflow/react";
@@ -44,6 +43,7 @@ import { WorkspaceHeader } from "./components/WorkspaceHeader";
 import { WorkspaceOverlays } from "./components/WorkspaceOverlays";
 import { useWorkspaceData } from "../hooks/useWorkspaceData";
 import { useWorkspaceActions } from "../hooks/useWorkspaceActions";
+import { useExcalidrawControls } from "../hooks/useExcalidrawControls";
 import { updateNodePosition } from "@/lib/workspaceEngine";
 
 const WORKSPACE_ONBOARDING_KEY = "archway-workspace-onboarding-dismissed";
@@ -88,6 +88,7 @@ function WorkspaceContent({ projectId }: { projectId: string }) {
   const [isDeletingNode, setIsDeletingNode] = useState(false);
 
   const flowWrapperRef = useRef<HTMLDivElement | null>(null);
+  const excalidrawControls = useExcalidrawControls();
 
   // Focus and Selection handlers
   const focusNodeInCanvas = useCallback(
@@ -507,16 +508,7 @@ function WorkspaceContent({ projectId }: { projectId: string }) {
                   strokeWidth: 2,
                 },
               }}
-              panOnScroll
-              panOnDrag={[1, 2]}
-              selectionOnDrag
-              selectionMode={SelectionMode.Partial}
-              panActivationKeyCode="Space"
-              zoomOnScroll={false}
-              zoomOnPinch
-              zoomOnDoubleClick={false}
-              minZoom={0.1}
-              maxZoom={2}
+              {...excalidrawControls}
               fitViewOptions={{ padding: 0.2, duration: 300 }}
               proOptions={{ hideAttribution: true }}
               fitView
