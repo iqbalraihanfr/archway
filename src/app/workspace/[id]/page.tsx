@@ -39,9 +39,12 @@ import { ValidationSummaryPanel } from "@/components/editors/ValidationSummaryPa
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { WorkspaceCommandDialog } from "@/components/layout/WorkspaceCommandDialog";
 import { WorkspaceHelpDialog } from "@/components/layout/WorkspaceHelpDialog";
-import { getValidationTone } from "./utils";
+import { getValidationTone } from "../utils";
 import { WorkspaceHeader } from "./components/WorkspaceHeader";
 import { WorkspaceOverlays } from "./components/WorkspaceOverlays";
+import { useWorkspaceData } from "../hooks/useWorkspaceData";
+import { useWorkspaceActions } from "../hooks/useWorkspaceActions";
+import { updateNodePosition } from "@/lib/workspaceEngine";
 
 const WORKSPACE_ONBOARDING_KEY = "archway-workspace-onboarding-dismissed";
 
@@ -53,27 +56,22 @@ type DeleteNodeState = {
 function WorkspaceContent({ projectId }: { projectId: string }) {
   const reactFlow = useReactFlow();
 
-  const project = useLiveQuery(
-    () => db.projects.get(projectId),
-    [projectId],
-    null,
-  );
-  const dbNodes = useLiveQuery(
-    () => db.nodes.where({ project_id: projectId }).toArray(),
-    [projectId],
-    [],
-  );
-  const dbEdges = useLiveQuery(
-    () => db.edges.where({ project_id: projectId }).toArray(),
-    [projectId],
-    [],
-  );
-  const dbContents = useLiveQuery(() => db.nodeContents.toArray(), [], []);
-  const dbWarnings = useLiveQuery(
-    () => db.validationWarnings.where({ project_id: projectId }).toArray(),
-    [projectId],
-    [],
-  );
+  // Custom Hooks for Data and Actions
+  const {
+    project,
+    dbNodes,
+    dbEdges,
+    dbContents,
+    dbWarnings,
+    sortedNodes,
+    recommendedNextNode,
+    doneCount,
+    errorCount,
+    warningCount,
+    infoCount,
+    progressPercent,
+    validationTone,
+  } = useWorkspaceData(projectId);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<FlowEdge>([]);
@@ -90,6 +88,32 @@ function WorkspaceContent({ projectId }: { projectId: string }) {
   const [isDeletingNode, setIsDeletingNode] = useState(false);
 
   const flowWrapperRef = useRef<HTMLDivElement | null>(null);
+
+  // Focus and Selection handlers
+  const focusNodeInCanvas = useCallback(
+    (node: NodeData) => {
+      reactFlow.setCenter(node.position_x + 150, node.position_y + 60, {
+        zoom: 0.8,
+        duration: 350,
+      });
+    },
+    [reactFlow],
+  );
+
+  const handleOpenNode = useCallback(
+    (node: NodeData) => {
+      setSelectedNodeData(node);
+      setEditorCollapsed(false);
+      focusNodeInCanvas(node);
+    },
+    [focusNodeInCanvas],
+  );
+
+  const { handleAddNode, handleDeleteNode, handleConnect } = useWorkspaceActions({
+    projectId,
+    dbNodes,
+    onOpenNode: handleOpenNode,
+  });
 
   const nodeTypes = useMemo(
     () => ({
@@ -114,65 +138,6 @@ function WorkspaceContent({ projectId }: { projectId: string }) {
     }),
     [],
   );
-
-  const standardNodeOrder = useMemo(
-    () => [
-      "project_brief",
-      "requirements",
-      "user_stories",
-      "use_cases",
-      "flowchart",
-      "dfd",
-      "erd",
-      "sequence",
-      "task_board",
-      "summary",
-      "custom",
-    ],
-    [],
-  );
-
-  const sortedNodes = useMemo(() => {
-    return [...dbNodes].sort((a, b) => {
-      const orderA = standardNodeOrder.indexOf(a.type);
-      const orderB = standardNodeOrder.indexOf(b.type);
-      const normalizedA = orderA === -1 ? Number.MAX_SAFE_INTEGER : orderA;
-      const normalizedB = orderB === -1 ? Number.MAX_SAFE_INTEGER : orderB;
-
-      if (normalizedA !== normalizedB) return normalizedA - normalizedB;
-      return a.sort_order - b.sort_order;
-    });
-  }, [dbNodes, standardNodeOrder]);
-
-  const recommendedNextNode = useMemo(
-    () => sortedNodes.find((node) => node.status !== "Done") || null,
-    [sortedNodes],
-  );
-
-  const doneCount = useMemo(
-    () => dbNodes.filter((node) => node.status === "Done").length,
-    [dbNodes],
-  );
-
-  const errorCount = useMemo(
-    () => dbWarnings.filter((warning) => warning.severity === "error").length,
-    [dbWarnings],
-  );
-
-  const warningCount = useMemo(
-    () => dbWarnings.filter((warning) => warning.severity === "warning").length,
-    [dbWarnings],
-  );
-
-  const infoCount = useMemo(
-    () => dbWarnings.filter((warning) => warning.severity === "info").length,
-    [dbWarnings],
-  );
-
-  const progressPercent =
-    dbNodes.length > 0 ? Math.round((doneCount / dbNodes.length) * 100) : 0;
-
-  const validationTone = getValidationTone(errorCount, warningCount);
 
   const helpChecklist = useMemo(
     () => [
@@ -231,6 +196,7 @@ function WorkspaceContent({ projectId }: { projectId: string }) {
     }
   }, [projectId, showOnboarding]);
 
+  // Sync DB Nodes to Flow Nodes
   useEffect(() => {
     if (dbNodes.length === 0) {
       setNodes([]);
@@ -257,6 +223,7 @@ function WorkspaceContent({ projectId }: { projectId: string }) {
     setNodes(flowNodes);
   }, [dbNodes, dbWarnings, recommendedNextNode, setNodes]);
 
+  // Sync DB Edges to Flow Edges
   useEffect(() => {
     if (dbEdges.length === 0 || nodes.length === 0) {
       setEdges([]);
@@ -308,25 +275,6 @@ function WorkspaceContent({ projectId }: { projectId: string }) {
     setShowOnboarding(false);
   }, []);
 
-  const focusNodeInCanvas = useCallback(
-    (node: NodeData) => {
-      reactFlow.setCenter(node.position_x + 150, node.position_y + 60, {
-        zoom: 0.8,
-        duration: 350,
-      });
-    },
-    [reactFlow],
-  );
-
-  const handleOpenNode = useCallback(
-    (node: NodeData) => {
-      setSelectedNodeData(node);
-      setEditorCollapsed(false);
-      focusNodeInCanvas(node);
-    },
-    [focusNodeInCanvas],
-  );
-
   const handleJumpToNode = useCallback(
     (nodeId: string) => {
       const targetNode = dbNodes.find((node) => node.id === nodeId);
@@ -347,28 +295,21 @@ function WorkspaceContent({ projectId }: { projectId: string }) {
 
   const onNodeDragStop = useCallback(
     async (_event: React.MouseEvent, node: FlowNode) => {
-      await db.nodes.update(node.id, {
-        position_x: node.position.x,
-        position_y: node.position.y,
-      });
+      await updateNodePosition(node.id, node.position.x, node.position.y);
     },
     [],
   );
 
   const onConnect = useCallback(
     async (params: Connection) => {
+      // Immediate local state update for UX
       setEdges((currentEdges) => addEdge(params, currentEdges));
 
       if (params.source && params.target) {
-        await db.edges.add({
-          id: crypto.randomUUID(),
-          project_id: projectId,
-          source_node_id: params.source,
-          target_node_id: params.target,
-        });
+        await handleConnect(params.source, params.target);
       }
     },
-    [projectId, setEdges],
+    [handleConnect, setEdges],
   );
 
   const onNodeClick = useCallback(
@@ -382,38 +323,6 @@ function WorkspaceContent({ projectId }: { projectId: string }) {
     setSelectedNodeData(null);
     setEditorCollapsed(false);
   }, []);
-
-  const handleAddNode = useCallback(
-    async (type: string, baseLabel: string) => {
-      const newId = crypto.randomUUID();
-      let x = Math.random() * 500;
-      let y = Math.random() * 500 + 100;
-
-      const normalNodes =
-        dbNodes.filter(
-          (node) => node.type !== "summary" && node.type !== "task_board",
-        ) || [];
-
-      if (normalNodes.length > 0) {
-        const last = normalNodes[normalNodes.length - 1];
-        x = last.position_x + 350;
-        y = last.position_y;
-      }
-
-      await db.nodes.add({
-        id: newId,
-        project_id: projectId,
-        type,
-        label: baseLabel,
-        status: "Empty",
-        position_x: x,
-        position_y: y,
-        sort_order: dbNodes.length + 1,
-        updated_at: new Date().toISOString(),
-      });
-    },
-    [dbNodes, projectId],
-  );
 
   const requestDeleteNode = useCallback(
     (nodeId: string) => {
@@ -439,15 +348,7 @@ function WorkspaceContent({ projectId }: { projectId: string }) {
     try {
       const nodeId = deleteNodeState.id;
 
-      await db.nodes.delete(nodeId);
-
-      const contents = await db.nodeContents
-        .where({ node_id: nodeId })
-        .toArray();
-      await db.nodeContents.bulkDelete(contents.map((content) => content.id));
-
-      const tasks = await db.tasks.where({ source_node_id: nodeId }).toArray();
-      await db.tasks.bulkDelete(tasks.map((task) => task.id));
+      await handleDeleteNode(nodeId);
 
       if (selectedNodeData?.id === nodeId) {
         setSelectedNodeData(null);
@@ -457,7 +358,7 @@ function WorkspaceContent({ projectId }: { projectId: string }) {
     } finally {
       setIsDeletingNode(false);
     }
-  }, [deleteNodeState, selectedNodeData]);
+  }, [deleteNodeState, handleDeleteNode, selectedNodeData]);
 
   const handleValidationNavigate = useCallback(
     (nodeId: string) => {

@@ -28,7 +28,7 @@ import {
   type ValidationTone,
   getMetricPillClass,
   formatRelativeProjectState,
-} from "../utils";
+} from "../../utils";
 
 interface WorkspaceHeaderProps {
   project: Project;
