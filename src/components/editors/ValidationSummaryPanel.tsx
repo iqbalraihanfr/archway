@@ -5,6 +5,8 @@ import {
   AlertCircle,
   AlertTriangle,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   ExternalLink,
   Filter,
   Info,
@@ -248,6 +250,14 @@ export function ValidationSummaryPanel({
   const [severityFilter, setSeverityFilter] = useState<SeverityFilter>("all");
   const [scopeFilter, setScopeFilter] = useState<ScopeFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
+
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (severityFilter !== "all") count++;
+    if (scopeFilter !== "all") count++;
+    return count;
+  }, [severityFilter, scopeFilter]);
 
   const errors = useMemo(
     () => warnings.filter((warning) => warning.severity === "error"),
@@ -385,71 +395,89 @@ export function ValidationSummaryPanel({
             />
           </div>
 
-          <div className="rounded-2xl border border-border/70 bg-background/50 p-3">
-            <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
-              <Filter className="h-3.5 w-3.5" />
-              Filters
-            </div>
+          <div className="rounded-2xl border border-border/70 bg-background/50 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowFilters(!showFilters)}
+              className="flex w-full items-center justify-between px-3 py-2.5 text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground hover:bg-muted/30 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <Filter className="h-3.5 w-3.5" />
+                Filters
+                {activeFilterCount > 0 && !showFilters && (
+                  <span className="ml-1 rounded-full bg-primary/20 px-1.5 py-0.5 text-[10px] font-bold text-primary">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </div>
+              {showFilters ? (
+                <ChevronUp className="h-3.5 w-3.5" />
+              ) : (
+                <ChevronDown className="h-3.5 w-3.5" />
+              )}
+            </button>
 
-            <div className="space-y-3">
-              <div>
-                <p className="mb-2 text-readable-xs font-medium text-foreground">
-                  Severity
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <FilterChip
-                    active={severityFilter === "all"}
-                    onClick={() => setSeverityFilter("all")}
-                  >
-                    All
-                  </FilterChip>
-                  <FilterChip
-                    active={severityFilter === "error"}
-                    onClick={() => setSeverityFilter("error")}
-                  >
-                    Errors
-                  </FilterChip>
-                  <FilterChip
-                    active={severityFilter === "warning"}
-                    onClick={() => setSeverityFilter("warning")}
-                  >
-                    Warnings
-                  </FilterChip>
-                  <FilterChip
-                    active={severityFilter === "info"}
-                    onClick={() => setSeverityFilter("info")}
-                  >
-                    Info
-                  </FilterChip>
+            {showFilters && (
+              <div className="space-y-4 p-3 pt-1 border-t border-border/50 animate-in fade-in slide-in-from-top-1 duration-200">
+                <div>
+                  <p className="mb-2 text-readable-xs font-medium text-foreground">
+                    Severity
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <FilterChip
+                      active={severityFilter === "all"}
+                      onClick={() => setSeverityFilter("all")}
+                    >
+                      All
+                    </FilterChip>
+                    <FilterChip
+                      active={severityFilter === "error"}
+                      onClick={() => setSeverityFilter("error")}
+                    >
+                      Errors
+                    </FilterChip>
+                    <FilterChip
+                      active={severityFilter === "warning"}
+                      onClick={() => setSeverityFilter("warning")}
+                    >
+                      Warnings
+                    </FilterChip>
+                    <FilterChip
+                      active={severityFilter === "info"}
+                      onClick={() => setSeverityFilter("info")}
+                    >
+                      Info
+                    </FilterChip>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="mb-2 text-readable-xs font-medium text-foreground">
+                    Scope
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <FilterChip
+                      active={scopeFilter === "all"}
+                      onClick={() => setScopeFilter("all")}
+                    >
+                      All issues
+                    </FilterChip>
+                    <FilterChip
+                      active={scopeFilter === "cross-node-only"}
+                      onClick={() => setScopeFilter("cross-node-only")}
+                    >
+                      Cross-node only
+                    </FilterChip>
+                    <FilterChip
+                      active={scopeFilter === "current-node-target"}
+                      onClick={() => setScopeFilter("current-node-target")}
+                    >
+                      Current-node only
+                    </FilterChip>
+                  </div>
                 </div>
               </div>
-
-              <div>
-                <p className="mb-2 text-readable-xs font-medium text-foreground">
-                  Scope
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <FilterChip
-                    active={scopeFilter === "all"}
-                    onClick={() => setScopeFilter("all")}
-                  >
-                    All issues
-                  </FilterChip>
-                  <FilterChip
-                    active={scopeFilter === "cross-node-only"}
-                    onClick={() => setScopeFilter("cross-node-only")}
-                  >
-                    Cross-node only
-                  </FilterChip>
-                  <FilterChip
-                    active={scopeFilter === "current-node-target"}
-                    onClick={() => setScopeFilter("current-node-target")}
-                  >
-                    Current-node only
-                  </FilterChip>
-                </div>
-              </div>
-            </div>
+            )}
           </div>
         </div>
       </div>
