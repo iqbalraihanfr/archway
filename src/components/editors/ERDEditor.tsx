@@ -1,10 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Plus, Database, ArrowRightLeft, LayoutGrid } from "lucide-react";
+import { Plus, Database, ArrowRightLeft, LayoutGrid, Code2 } from "lucide-react";
 import { useERDLogic, ERDFields } from "./erd/hooks/useERDLogic";
 import { EntityItem } from "./erd/components/EntityItem";
 import { RelationshipItem } from "./erd/components/RelationshipItem";
+import { ParseSqlDialog } from "./erd/components/ParseSqlDialog";
 
 export interface EditorProps {
   fields: ERDFields;
@@ -12,6 +14,7 @@ export interface EditorProps {
 }
 
 export function ERDEditor({ fields, onChange }: EditorProps) {
+  const [sqlOpen, setSqlOpen] = useState(false);
   const {
     entities,
     relationships,
@@ -32,9 +35,20 @@ export function ERDEditor({ fields, onChange }: EditorProps) {
         
         {/* Header Section */}
         <div className="space-y-6 animate-in fade-in slide-in-from-top-4 duration-1000">
-          <div className="flex items-center gap-2 text-primary/60">
-            <LayoutGrid className="h-3 w-3" />
-            <span className="text-[10px] font-black uppercase tracking-[0.3em]">Database Schema</span>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-primary/60">
+              <LayoutGrid className="h-3 w-3" />
+              <span className="text-[10px] font-black uppercase tracking-[0.3em]">Database Schema</span>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setSqlOpen(true)}
+              className="h-7 gap-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest border-border/50 px-3 hover:bg-primary/5 hover:text-primary hover:border-primary/30"
+            >
+              <Code2 className="h-3 w-3" />
+              Import Schema
+            </Button>
           </div>
           <div className="flex items-center justify-between">
             <h2 className="text-4xl lg:text-6xl font-black uppercase tracking-tighter text-foreground">
@@ -134,6 +148,12 @@ export function ERDEditor({ fields, onChange }: EditorProps) {
         </section>
 
       </div>
+
+      <ParseSqlDialog
+        open={sqlOpen}
+        onOpenChange={setSqlOpen}
+        onImport={(parsed) => onChange({ ...fields, ...parsed })}
+      />
     </div>
   );
 }
