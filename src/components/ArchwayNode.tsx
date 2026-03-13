@@ -1,11 +1,9 @@
 import { memo } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { NodeData, ValidationWarning } from "@/lib/db";
+import { NodeLivePreview } from "./NodeLivePreview";
 import {
   AlertTriangle,
-  CheckCircle2,
-  Circle,
-  Clock,
   Database,
   FileText,
   FolderKanban,
@@ -49,30 +47,6 @@ export const ArchwayNode = memo(
   }) => {
     const nodeData = data as unknown as NodeVisualData;
     const warningCount = nodeData.warnings?.length || 0;
-
-    const getStatusIcon = (status: NodeData["status"]) => {
-      switch (status) {
-        case "Done":
-          return (
-            <CheckCircle2 className="h-4 w-4 text-[var(--status-success)]" />
-          );
-        case "In Progress":
-          return <Clock className="h-4 w-4 text-[var(--status-warning)]" />;
-        default:
-          return <Circle className="h-4 w-4 text-muted-foreground" />;
-      }
-    };
-
-    const getStatusLabel = (status: NodeData["status"]) => {
-      switch (status) {
-        case "Done":
-          return "Done";
-        case "In Progress":
-          return "In progress";
-        default:
-          return "Empty";
-      }
-    };
 
     const getTypeIcon = (type: string) => {
       switch (type) {
@@ -154,19 +128,6 @@ export const ArchwayNode = memo(
           return "Working notes";
       }
     };
-
-    const actionLabel =
-      nodeData.type === "project_brief"
-        ? "Open brief"
-        : nodeData.type === "summary"
-          ? "Review summary"
-          : nodeData.type === "task_board"
-            ? "Open task board"
-            : nodeData.status === "Done"
-              ? "Review"
-              : nodeData.status === "In Progress"
-                ? "Continue"
-                : "Start";
 
     return (
       <>
@@ -252,37 +213,12 @@ export const ArchwayNode = memo(
             </div>
           </div>
 
-          <div className="flex items-center justify-between gap-3 border-t border-black/10 bg-card px-4 py-3 text-card-foreground">
-            <div className="min-w-0">
-              <p className="text-readable-xs uppercase tracking-[0.14em] text-muted-foreground">
-                Next action
-              </p>
-              <p className="truncate text-[15px] font-semibold tracking-wide text-foreground">
-                {actionLabel}
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <div
-                className={cn(
-                  "rounded-full px-2.5 py-1 text-readable-xs font-semibold",
-                  nodeData.status === "Done"
-                    ? "bg-[color:color-mix(in_oklch,var(--status-success)_14%,transparent)] text-[var(--status-success)]"
-                    : nodeData.status === "In Progress"
-                      ? "bg-[color:color-mix(in_oklch,var(--status-warning)_14%,transparent)] text-[var(--status-warning)]"
-                      : "bg-muted text-muted-foreground",
-                )}
-              >
-                {getStatusLabel(nodeData.status)}
-              </div>
-
-              <div
-                className="flex items-center justify-center rounded-full bg-muted/70 p-1.5"
-                title={`Status: ${nodeData.status}`}
-              >
-                {getStatusIcon(nodeData.status)}
-              </div>
-            </div>
+          <div className="border-t border-black/10 bg-card px-4 py-3 text-card-foreground">
+            <NodeLivePreview
+              nodeId={nodeData.id}
+              nodeType={nodeData.type}
+              projectId={nodeData.project_id}
+            />
           </div>
         </div>
 
