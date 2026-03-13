@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 
 import { createProject, deleteProject as deleteProjectAction } from "@/lib/projectEngine";
+import { getContentTemplate, type ContentTemplateKey } from "@/lib/contentTemplates";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ModeToggle } from "@/components/mode-toggle";
 import { Badge } from "@/components/ui/badge";
@@ -43,6 +44,7 @@ export default function Dashboard() {
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectDesc, setNewProjectDesc] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateKey>("quick");
+  const [selectedContentTemplate, setSelectedContentTemplate] = useState<ContentTemplateKey>("blank");
 
   const [deleteProject, setDeleteProject] = useState<DeleteProjectState>(null);
   const [isDeletingProject, setIsDeletingProject] = useState(false);
@@ -50,16 +52,19 @@ export default function Dashboard() {
   const handleCreateProject = async () => {
     if (!newProjectName.trim()) return;
 
+    const contentTpl = getContentTemplate(selectedContentTemplate);
     const projectId = await createProject({
       name: newProjectName.trim(),
       description: newProjectDesc.trim(),
       templateKey: selectedTemplate,
+      contentTemplate: selectedContentTemplate !== "blank" ? contentTpl : undefined,
     });
 
     setIsCreateOpen(false);
     setNewProjectName("");
     setNewProjectDesc("");
     setSelectedTemplate("quick");
+    setSelectedContentTemplate("blank");
 
     router.push(`/workspace/${projectId}`);
   };
@@ -249,6 +254,8 @@ export default function Dashboard() {
         onProjectDescChange={setNewProjectDesc}
         selectedTemplate={selectedTemplate}
         onTemplateChange={setSelectedTemplate}
+        selectedContentTemplate={selectedContentTemplate}
+        onContentTemplateChange={setSelectedContentTemplate}
         onCreate={handleCreateProject}
       />
 
