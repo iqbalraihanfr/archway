@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import { type NodeData } from "@/lib/db";
 import { TaskBoardEditor } from "@/components/editors/TaskBoardEditor";
 import { SummaryNodeEditor } from "@/components/editors/SummaryNodeEditor";
@@ -15,7 +15,6 @@ import {
 import {
   EditorPanelHeader,
   GuidedOverview,
-  TabBadge,
 } from "./panel/components";
 import { AttachmentsTab } from "./panel/AttachmentsTab";
 import { GuidedEditorContent } from "./panel/GuidedEditorContent";
@@ -80,11 +79,15 @@ export function NodeEditorPanel({
   // Attachment Actions
   const { onDrop, deleteAttachment } = useAttachments(node.id, attachments, setAttachments);
 
-  const defaultTab: EditorTab = hasGuidedEditor
-    ? "guided"
-    : isDiagram
-      ? "mermaid"
-      : "text";
+  // Diagram-first nodes: Mermaid code is the primary input, guided is secondary
+  const DIAGRAM_FIRST = ["flowchart", "dfd", "sequence"];
+  const defaultTab: EditorTab = DIAGRAM_FIRST.includes(node.type)
+    ? "mermaid"
+    : hasGuidedEditor
+      ? "guided"
+      : isDiagram
+        ? "mermaid"
+        : "text";
 
   const [activeTab, setActiveTab] = useState<EditorTab>(defaultTab);
 
@@ -146,22 +149,18 @@ export function NodeEditorPanel({
                   value="guided"
                 >
                   <div className="flex items-center justify-center gap-2">
-                    <Sparkles className="h-4 w-4" />
+                    <Sparkles className="h-3.5 w-3.5" />
                     <span>Guided</span>
-                    <TabBadge label="Primary" tone="primary" />
                   </div>
                 </TabsTrigger>
               )}
 
               {isDiagram && (
                 <TabsTrigger
-                  className="min-h-10.5 flex-1 rounded-xl px-3 py-2 text-sm"
+                  className="h-full flex-1 rounded-xl px-3 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
                   value="mermaid"
                 >
-                  <div className="flex items-center gap-2">
-                    <span>Diagram</span>
-                    <TabBadge label="Advanced" tone="muted" />
-                  </div>
+                  Diagram
                 </TabsTrigger>
               )}
 
@@ -170,10 +169,7 @@ export function NodeEditorPanel({
                   className="h-full flex-1 rounded-xl px-3 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
                   value="sql"
                 >
-                  <div className="flex items-center justify-center gap-2">
-                    <span>SQL Notes</span>
-                    <TabBadge label="Reference" tone="muted" />
-                  </div>
+                  SQL Notes
                 </TabsTrigger>
               )}
 
@@ -181,20 +177,14 @@ export function NodeEditorPanel({
                 className="h-full flex-1 rounded-xl px-3 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
                 value="text"
               >
-                <div className="flex items-center justify-center gap-2">
-                  <span>Notes</span>
-                  <TabBadge label="Reference" tone="muted" />
-                </div>
+                Notes
               </TabsTrigger>
 
               <TabsTrigger
                 className="h-full flex-1 rounded-xl px-3 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
                 value="attachments"
               >
-                <div className="flex items-center justify-center gap-2">
-                  <span>Files</span>
-                  <TabBadge label="Reference" tone="muted" />
-                </div>
+                Files
               </TabsTrigger>
             </TabsList>
           </div>

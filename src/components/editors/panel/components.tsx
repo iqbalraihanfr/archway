@@ -1,4 +1,7 @@
-import { Loader2, Check, X, Trash2 } from "lucide-react";
+"use client";
+
+import { useState } from "react";
+import { Loader2, Check, X, Trash2, ChevronDown } from "lucide-react";
 import type { NodeData } from "@/lib/db";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -146,15 +149,11 @@ export function EditorPanelHeader({
         </div>
       </div>
 
-      {/* Title Hero Area */}
-      <div className="px-6 py-6 transition-all">
-        <h2 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+      {/* Title Area */}
+      <div className="px-6 py-3">
+        <h2 className="text-lg font-semibold tracking-tight text-foreground">
           {node.label}
         </h2>
-        <p className="mt-2 text-sm leading-relaxed text-muted-foreground/70 max-w-[90%]">
-          Design and document your <span className="font-medium text-foreground/80">{getNodeTypeLabel(node.type).toLowerCase()}</span>.
-          Use the Guided tab as your primary source of truth.
-        </p>
       </div>
     </div>
     </>
@@ -170,37 +169,52 @@ export function GuidedOverview({
   isDiagram: boolean;
   isErd: boolean;
 }) {
-  return (
-    <div className="space-y-3 px-5 pt-4">
-      {hasGuidedEditor && (
-        <SectionHint
-          title="Recommended workflow"
-          description="Start in Guided. The fields here drive validation, generated tasks, export output, and diagram generation."
-          tone="primary"
-        />
-      )}
+  const [isOpen, setIsOpen] = useState(false);
 
-      <div className="grid gap-3 md:grid-cols-3">
-        <SectionHint
-          title="Guided"
-          description="Primary structured input. Best place to document the node clearly and consistently."
-          tone="default"
+  return (
+    <div className="px-5 pt-3">
+      <button
+        onClick={() => setIsOpen((v) => !v)}
+        className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs text-muted-foreground/60 transition-colors hover:bg-muted/40 hover:text-muted-foreground"
+      >
+        <ChevronDown
+          className={`h-3.5 w-3.5 shrink-0 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
         />
-        {isDiagram && (
-          <SectionHint
-            title="Diagram"
-            description="Generated from Guided fields. Use manual editing only when you need a custom override."
-            tone="muted"
-          />
-        )}
-        {isErd && (
-          <SectionHint
-            title="SQL Notes"
-            description="Reference-only notes. Helpful for paste-in schemas, but not parsed back into Guided fields."
-            tone="muted"
-          />
-        )}
-      </div>
+        <span>Tab guide</span>
+      </button>
+
+      {isOpen && (
+        <div className="mt-2 space-y-2">
+          {hasGuidedEditor && (
+            <SectionHint
+              title="Recommended workflow"
+              description="Start in Guided. The fields here drive validation, generated tasks, export output, and diagram generation."
+              tone="primary"
+            />
+          )}
+          <div className="grid gap-2 md:grid-cols-3">
+            <SectionHint
+              title="Guided"
+              description="Primary structured input. Best place to document the node clearly and consistently."
+              tone="default"
+            />
+            {isDiagram && (
+              <SectionHint
+                title="Diagram"
+                description="Generated from Guided fields. Use manual editing only when you need a custom override."
+                tone="muted"
+              />
+            )}
+            {isErd && (
+              <SectionHint
+                title="SQL Notes"
+                description="Reference-only notes. Helpful for paste-in schemas, but not parsed back into Guided fields."
+                tone="muted"
+              />
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
