@@ -1,5 +1,8 @@
-import { db, Project, NodeData, NodeContent, Edge, ValidationWarning, TaskData, Attachment } from "./db";
+import { db, NodeData, NodeContent, ValidationWarning, TaskData, Attachment } from "./db";
 import { MERMAID_TEMPLATES } from "@/components/editors/panel/constants";
+import type { ProjectBriefFields } from "@/components/editors/ProjectBriefEditor";
+import type { ContentTemplate } from "./contentTemplates";
+import { generateTasksFromNode } from "./taskEngine";
 
 export interface ProjectTemplate {
   label: string;
@@ -61,14 +64,29 @@ export const PROJECT_TEMPLATES: Record<string, ProjectTemplate> = {
   },
 };
 
+/** Node types that the task engine can generate tasks from */
+const TASK_GENERATING_TYPES = new Set([
+  "erd",
+  "flowchart",
+  "sequence",
+  "dfd",
+  "use_cases",
+  "user_stories",
+]);
+
 export async function createProject(params: {
   name: string;
   description: string;
   templateKey: string;
+  initialBriefContent?: ProjectBriefFields;
+  contentTemplate?: ContentTemplate;
 }): Promise<string> {
-  const { name, description, templateKey } = params;
+  const { name, description, templateKey, initialBriefContent, contentTemplate } = params;
   const projectId = crypto.randomUUID();
   const now = new Date().toISOString();
+
+  // Collect seeded nodes so we can generate tasks after the transaction
+  const seededNodes: { node: NodeData; content: NodeContent }[] = [];
 
   await db.transaction(
     "rw",
@@ -79,42 +97,90 @@ export async function createProject(params: {
         id: projectId,
         name,
         description,
-        template_type: templateKey,
+        template_type: templateKey as "quick" | "full" | "blank",
         created_at: now,
         updated_at: now,
       });
 
       const template = PROJECT_TEMPLATES[templateKey] || PROJECT_TEMPLATES.blank;
       const nodeMap = new Map<string, string>();
-      const nodeArray: { id: string; type: string }[] = [];
 
       // 2. Add nodes
       for (const nodeTpl of template.nodes) {
         const nodeId = crypto.randomUUID();
         nodeMap.set(nodeTpl.type, nodeId);
-        nodeArray.push({ id: nodeId, type: nodeTpl.type });
+
+        // Determine seeded content for this node
+        let structuredFields: Record<string, unknown> = {};
+        let mermaidManual = "";
+        let hasContent = false;
+
+        if (contentTemplate) {
+          if (nodeTpl.type === "project_brief") {
+            structuredFields = { ...contentTemplate.brief, name };
+            hasContent = Object.keys(contentTemplate.brief).length > 0;
+          } else if (nodeTpl.type === "requirements" && contentTemplate.requirements) {
+            structuredFields = contentTemplate.requirements;
+            hasContent = true;
+          } else if (nodeTpl.type === "erd" && contentTemplate.erd) {
+            structuredFields = contentTemplate.erd;
+            hasContent = true;
+          } else if (nodeTpl.type === "flowchart" && contentTemplate.mermaid?.flowchart) {
+            mermaidManual = contentTemplate.mermaid.flowchart;
+            hasContent = true;
+          } else if (nodeTpl.type === "sequence" && contentTemplate.mermaid?.sequence) {
+            mermaidManual = contentTemplate.mermaid.sequence;
+            hasContent = true;
+          } else if (nodeTpl.type === "dfd" && contentTemplate.mermaid?.dfd) {
+            mermaidManual = contentTemplate.mermaid.dfd;
+            hasContent = true;
+          }
+        } else if (nodeTpl.type === "project_brief" && initialBriefContent) {
+          structuredFields = { ...initialBriefContent, name };
+          hasContent = true;
+        }
+
+        // Fix #1: seed nodes start as "In Progress", not "Empty"
+        const nodeStatus: NodeData["status"] = hasContent ? "In Progress" : "Empty";
 
         await db.nodes.add({
           id: nodeId,
           project_id: projectId,
           type: nodeTpl.type,
           label: nodeTpl.label,
-          status: "Empty",
+          status: nodeStatus,
           position_x: nodeTpl.x || 0,
           position_y: nodeTpl.y || 0,
           sort_order: template.nodes.indexOf(nodeTpl),
           updated_at: now,
         });
 
-        // Initialize content
-        await db.nodeContents.add({
+        const nodeContent: NodeContent = {
           id: crypto.randomUUID(),
           node_id: nodeId,
-          structured_fields: {},
+          structured_fields: structuredFields,
           mermaid_auto: MERMAID_TEMPLATES[nodeTpl.type] || "",
-          mermaid_manual: "",
+          mermaid_manual: mermaidManual,
           updated_at: now,
-        });
+        };
+
+        await db.nodeContents.add(nodeContent);
+
+        // Collect task-generating nodes that have structured content
+        if (hasContent && TASK_GENERATING_TYPES.has(nodeTpl.type) && Object.keys(structuredFields).length > 0) {
+          const nodeData: NodeData = {
+            id: nodeId,
+            project_id: projectId,
+            type: nodeTpl.type,
+            label: nodeTpl.label,
+            status: nodeStatus,
+            position_x: nodeTpl.x || 0,
+            position_y: nodeTpl.y || 0,
+            sort_order: template.nodes.indexOf(nodeTpl),
+            updated_at: now,
+          };
+          seededNodes.push({ node: nodeData, content: nodeContent });
+        }
       }
 
       // 3. Add edges
@@ -134,6 +200,28 @@ export async function createProject(params: {
     },
   );
 
+  // Fix #2: generate tasks for seeded nodes immediately after project creation
+  if (seededNodes.length > 0) {
+    const allGeneratedTasks: TaskData[] = [];
+
+    for (const { node, content } of seededNodes) {
+      const rawTasks = generateTasksFromNode(node, content, projectId);
+      const tasks: TaskData[] = rawTasks.map((t) => ({
+        ...t,
+        id: crypto.randomUUID(),
+        created_at: now,
+        updated_at: now,
+      }));
+      allGeneratedTasks.push(...tasks);
+    }
+
+    if (allGeneratedTasks.length > 0) {
+      await db.transaction("rw", [db.tasks], async () => {
+        await db.tasks.bulkAdd(allGeneratedTasks);
+      });
+    }
+  }
+
   return projectId;
 }
 
@@ -150,13 +238,11 @@ export async function deleteProject(projectId: string): Promise<void> {
       db.attachments,
     ],
     async () => {
-      // 1. Find nodes to delete related data
       const projectNodes = await db.nodes
         .where({ project_id: projectId })
         .toArray();
       const nodeIds = projectNodes.map((n) => n.id);
 
-      // 2. Delete related data
       await db.projects.delete(projectId);
       await db.nodes.where({ project_id: projectId }).delete();
       await db.edges.where({ project_id: projectId }).delete();

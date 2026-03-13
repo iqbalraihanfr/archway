@@ -4,7 +4,7 @@ export interface Project {
   id: string;
   name: string;
   description: string;
-  template_type: "quick" | "full";
+  template_type: "quick" | "full" | "blank";
   created_at: string;
   updated_at: string;
 }
