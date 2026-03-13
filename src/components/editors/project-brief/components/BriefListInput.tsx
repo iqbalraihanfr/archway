@@ -1,9 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Sparkles, Loader2 } from "lucide-react";
 
 interface BriefListInputProps {
   label: string;
@@ -11,6 +12,7 @@ interface BriefListInputProps {
   onChange: (items: string[]) => void;
   placeholder?: string;
   icon?: React.ReactNode;
+  onSuggest?: () => Promise<string[]>;
 }
 
 export function BriefListInput({
@@ -19,7 +21,10 @@ export function BriefListInput({
   onChange,
   placeholder,
   icon,
+  onSuggest,
 }: BriefListInputProps) {
+  const [isSuggesting, setIsSuggesting] = useState(false);
+
   const add = () => onChange([...items, ""]);
   const update = (i: number, val: string) => {
     const arr = [...items];
@@ -28,6 +33,20 @@ export function BriefListInput({
   };
   const remove = (i: number) => onChange(items.filter((_, idx) => idx !== i));
 
+  const handleSuggest = async () => {
+    if (!onSuggest) return;
+    setIsSuggesting(true);
+    try {
+      const suggestions = await onSuggest();
+      const newItems = suggestions.filter((s) => !items.includes(s));
+      onChange([...items, ...newItems]);
+    } catch {
+      // silently fail — user can retry
+    } finally {
+      setIsSuggesting(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -35,14 +54,31 @@ export function BriefListInput({
           {icon}
           <Label className="text-[10px] font-bold uppercase tracking-widest">{label}</Label>
         </div>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={add}
-          className="h-8 rounded-full text-[10px] font-bold uppercase tracking-widest hover:bg-primary/5 hover:text-primary transition-all px-4"
-        >
-          <Plus className="h-3 w-3 mr-2" /> Add Item
-        </Button>
+        <div className="flex items-center gap-1">
+          {onSuggest && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => void handleSuggest()}
+              disabled={isSuggesting}
+              className="h-8 rounded-full text-[10px] font-bold uppercase tracking-widest hover:bg-primary/5 hover:text-primary transition-all px-4"
+            >
+              {isSuggesting ? (
+                <><Loader2 className="h-3 w-3 mr-2 animate-spin" /> Thinking…</>
+              ) : (
+                <><Sparkles className="h-3 w-3 mr-2" /> Suggest</>
+              )}
+            </Button>
+          )}
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={add}
+            className="h-8 rounded-full text-[10px] font-bold uppercase tracking-widest hover:bg-primary/5 hover:text-primary transition-all px-4"
+          >
+            <Plus className="h-3 w-3 mr-2" /> Add Item
+          </Button>
+        </div>
       </div>
 
       <div className="space-y-3">

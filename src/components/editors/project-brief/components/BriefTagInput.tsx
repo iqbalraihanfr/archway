@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { Label } from "@/components/ui/label";
-import { X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { X, Sparkles, Loader2 } from "lucide-react";
 
 interface BriefTagInputProps {
   label: string;
@@ -9,6 +11,7 @@ interface BriefTagInputProps {
   onChange: (tags: string[]) => void;
   placeholder?: string;
   icon?: React.ReactNode;
+  onSuggest?: () => Promise<string[]>;
 }
 
 export function BriefTagInput({
@@ -17,7 +20,23 @@ export function BriefTagInput({
   onChange,
   placeholder,
   icon,
+  onSuggest,
 }: BriefTagInputProps) {
+  const [isSuggesting, setIsSuggesting] = useState(false);
+
+  const handleSuggest = async () => {
+    if (!onSuggest) return;
+    setIsSuggesting(true);
+    try {
+      const suggestions = await onSuggest();
+      onChange([...tags, ...suggestions.filter((s) => !tags.includes(s))]);
+    } catch {
+      // silently fail
+    } finally {
+      setIsSuggesting(false);
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     const input = e.currentTarget;
     if ((e.key === "Enter" || e.key === ",") && input.value.trim()) {
@@ -37,9 +56,26 @@ export function BriefTagInput({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2 text-muted-foreground/60">
-        {icon}
-        <Label className="text-[10px] font-bold uppercase tracking-widest">{label}</Label>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-muted-foreground/60">
+          {icon}
+          <Label className="text-[10px] font-bold uppercase tracking-widest">{label}</Label>
+        </div>
+        {onSuggest && (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => void handleSuggest()}
+            disabled={isSuggesting}
+            className="h-8 rounded-full text-[10px] font-bold uppercase tracking-widest hover:bg-primary/5 hover:text-primary transition-all px-4"
+          >
+            {isSuggesting ? (
+              <><Loader2 className="h-3 w-3 mr-2 animate-spin" /> Thinking…</>
+            ) : (
+              <><Sparkles className="h-3 w-3 mr-2" /> Suggest</>
+            )}
+          </Button>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-2.5 p-4 border border-border/40 rounded-[2rem] bg-background/50 backdrop-blur-sm min-h-[60px] items-center transition-all hover:bg-background/80 hover:border-border/60">
