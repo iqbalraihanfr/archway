@@ -47,6 +47,7 @@ import { useExcalidrawControls } from "../hooks/useExcalidrawControls";
 import { updateNodePosition } from "@/lib/workspaceEngine";
 
 const WORKSPACE_ONBOARDING_KEY = "archway-workspace-onboarding-dismissed";
+const EDITOR_WIDTH_KEY = "archway-editor-width";
 
 type DeleteNodeState = {
   id: string;
@@ -82,10 +83,64 @@ function WorkspaceContent({ projectId }: { projectId: string }) {
   const [showValidationPanel, setShowValidationPanel] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [editorCollapsed, setEditorCollapsed] = useState(false);
+  const [editorWidth, setEditorWidth] = useState(640);
+  const [isResizing, setIsResizing] = useState(false);
   const [showHelpDialog, setShowHelpDialog] = useState(false);
   const [showCommandDialog, setShowCommandDialog] = useState(false);
   const [deleteNodeState, setDeleteNodeState] = useState<DeleteNodeState>(null);
   const [isDeletingNode, setIsDeletingNode] = useState(false);
+
+  // Persistence for Editor Width
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const savedWidth = window.localStorage.getItem(EDITOR_WIDTH_KEY);
+    if (savedWidth) {
+      setEditorWidth(parseInt(savedWidth, 10));
+    }
+  }, []);
+
+  const saveWidth = useCallback((width: number) => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(EDITOR_WIDTH_KEY, width.toString());
+  }, []);
+
+  // Resize Handlers
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+  }, []);
+
+  const handleMouseMove = useCallback(
+    (e: MouseEvent) => {
+      if (!isResizing) return;
+      const newWidth = window.innerWidth - e.clientX;
+      if (newWidth >= 320 && newWidth <= window.innerWidth * 0.8) {
+        setEditorWidth(newWidth);
+      }
+    },
+    [isResizing],
+  );
+
+  const handleMouseUp = useCallback(() => {
+    if (isResizing) {
+      setIsResizing(false);
+      saveWidth(editorWidth);
+    }
+  }, [isResizing, editorWidth, saveWidth]);
+
+  useEffect(() => {
+    if (isResizing) {
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+    } else {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    }
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isResizing, handleMouseMove, handleMouseUp]);
 
   const flowWrapperRef = useRef<HTMLDivElement | null>(null);
   const excalidrawControls = useExcalidrawControls();
@@ -248,6 +303,14 @@ function WorkspaceContent({ projectId }: { projectId: string }) {
         }
       }
 
+      const sourceStatus =
+        dbNodes.find((n) => n.id === edge.source_node_id)?.status ?? "Empty";
+
+      const markerColor =
+        sourceStatus === "Done" ? "#22c55e"
+        : sourceStatus === "In Progress" ? "#f59e0b"
+        : "#94a3b8";
+
       return {
         id: edge.id,
         source: edge.source_node_id,
@@ -256,11 +319,12 @@ function WorkspaceContent({ projectId }: { projectId: string }) {
         targetHandle,
         type: "archway",
         animated: true,
+        data: { sourceStatus },
         markerEnd: {
           type: MarkerType.Arrow,
           width: 20,
           height: 20,
-          color: "#94a3b8",
+          color: markerColor,
           strokeWidth: 2,
         },
       };
@@ -531,7 +595,27 @@ function WorkspaceContent({ projectId }: { projectId: string }) {
           </div>
 
           {selectedNodeData && !editorCollapsed && (
-            <div className="workspace-panel relative z-20 h-full w-[min(100%,680px)] shrink-0 border-l border-border/70">
+            <div
+              className={`workspace-panel relative z-20 h-full shrink-0 border-l border-border/70 ${
+                isResizing ? "pointer-events-none select-none" : ""
+              }`}
+              style={{
+                width:
+                  typeof window !== "undefined" && window.innerWidth >= 768
+                    ? `${editorWidth}px`
+                    : "100%",
+                maxWidth: "80vw",
+                minWidth: "320px",
+              }}
+            >
+              {/* Resize Handle */}
+              <div
+                className="absolute left-0 top-0 bottom-0 z-50 w-1.5 cursor-col-resize hover:bg-primary/40 transition-colors hidden md:block group"
+                onMouseDown={handleMouseDown}
+              >
+                <div className="absolute left-1/2 top-1/2 h-8 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-border/60 transition-colors group-hover:bg-primary/60" />
+              </div>
+
               <div className="absolute left-0 top-1/2 z-30 -translate-x-1/2 -translate-y-1/2">
                 <Button
                   variant="outline"
