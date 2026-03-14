@@ -49,7 +49,10 @@ export interface TaskData {
   source_item_id?: string;
   title: string;
   description: string;
-  group_key: string;
+  group_key: string; // Internal implementation group (e.g. "Database", "API")
+  feature_name?: string; // High-level feature (e.g. "Authentication", "Billing")
+  priority_tier?: "P0" | "P1" | "P2" | "P3";
+  dod_items?: { text: string; done: boolean }[]; // Interactive Definition of Done
   priority:
     | "Must"
     | "Should"
@@ -152,5 +155,18 @@ db.version(4)
         }
       });
   });
+
+// Schema declaration for version 5 (Feature-based tasks)
+db.version(5).stores({
+  projects: "id, name, template_type, created_at, updated_at",
+  nodes: "id, project_id, type, status, sort_order",
+  nodeContents: "id, node_id",
+  edges: "id, project_id, source_node_id, target_node_id",
+  tasks:
+    "id, project_id, source_node_id, source_item_id, status, feature_name, priority_tier, group_key, is_manual, sort_order",
+  attachments: "id, node_id, filename, mime_type, created_at",
+  validationWarnings:
+    "id, project_id, source_node_id, target_node_type, severity, rule_id",
+});
 
 export { db };

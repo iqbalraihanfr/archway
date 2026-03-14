@@ -6,6 +6,7 @@ import { generateFlowchartTasks } from "./flowchart";
 import { generateSequenceTasks } from "./sequence";
 import { generateDFDTasks } from "./dfd";
 import { generateUseCasesTasks } from "./useCases";
+import { generateRequirementTasks } from "./requirements";
 
 export { detectDuplicateTasks } from "./utils";
 
@@ -23,6 +24,8 @@ export function generateTasksFromNode(
   const fields = content.structured_fields as Record<string, any>;
 
   switch (node.type) {
+    case "requirements":
+      return generateRequirementTasks(node.id, projectId, fields);
     case "user_stories":
       return generateUserStoriesTasks(node.id, projectId, fields);
     case "erd":

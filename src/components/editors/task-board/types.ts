@@ -1,6 +1,6 @@
 import { TaskData } from "@/lib/db";
 
-export type GroupingMode = "flat" | "source" | "layer" | "priority" | "story";
+export type GroupingMode = "flat" | "feature" | "source" | "layer" | "priority" | "story";
 export type StatusFilter = "all" | "todo" | "in_progress" | "done";
 export type PriorityFilter = "all" | "must" | "should" | "could" | "wont";
 export type SourceFilter = "all" | "manual" | string;

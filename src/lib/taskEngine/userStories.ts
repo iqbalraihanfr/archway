@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { TaskData } from "@/lib/db";
+import { mapPriorityToTier } from "./utils";
 
 export function generateUserStoriesTasks(
   nodeId: string,
@@ -20,7 +21,9 @@ export function generateUserStoriesTasks(
       source_item_id: `story-${index}-impl`,
       title: `Implement: ${item.goal}`,
       description: `As a ${item.role || "user"}, I want to ${item.goal} so that ${item.benefit || "it works"}`,
-      group_key: "User Stories",
+      group_key: "Feature",
+      feature_name: item.category || "General",
+      priority_tier: mapPriorityToTier(item.priority),
       priority: item.priority || "Should",
       labels: ["feature"],
       status: "todo",
@@ -44,6 +47,8 @@ export function generateUserStoriesTasks(
         title: `Test: Given ${given}, When ${when}, Then ${then}`,
         description: `Acceptance test for US-${String(index + 1).padStart(3, "0")} AC-${acIdx + 1}`,
         group_key: "Testing",
+        feature_name: "Quality & Performance",
+        priority_tier: mapPriorityToTier(item.priority),
         priority: item.priority || "Should",
         labels: ["testing"],
         status: "todo",

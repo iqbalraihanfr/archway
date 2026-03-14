@@ -84,7 +84,9 @@ export function TaskBoardEditor({
 
     filteredTasks.forEach((task) => {
       let key = "Other";
-      if (grouping === "source") {
+      if (grouping === "feature") {
+        key = task.feature_name || "General";
+      } else if (grouping === "source") {
         key = task.source_node_id
           ? (nodes.find((sn) => sn.id === task.source_node_id)?.label ?? "Unknown Source")
           : "Manual Tasks";
@@ -104,7 +106,13 @@ export function TaskBoardEditor({
     });
 
     return Object.fromEntries(
-      Object.entries(groups).sort(([a], [b]) => a.localeCompare(b))
+      Object.entries(groups).sort(([a], [b]) => {
+        if (grouping === "feature") {
+          // Put P0 features first if possible, or just alpha
+          return a.localeCompare(b);
+        }
+        return a.localeCompare(b);
+      })
     );
   }, [filteredTasks, grouping, nodes]);
 
@@ -199,10 +207,10 @@ export function TaskBoardEditor({
         </div>
       </div>
 
-      <div className="workspace-scroll flex-1 overflow-y-auto px-6 py-8">
-        <div className="space-y-10 max-w-4xl mx-auto">
+      <div className="workspace-scroll flex-1 overflow-y-auto px-10">
+        <div className="space-y-12 max-w-4xl mx-auto">
           {duplicates.length > 0 && (
-            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 backdrop-blur-sm max-w-2xl">
+            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 backdrop-blur-sm max-w-2xl px-6">
               <div className="flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4 text-amber-600" />
                 <h3 className="text-xs font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider">
@@ -227,43 +235,96 @@ export function TaskBoardEditor({
             />
           ) : filteredTasks.length === 0 ? (
             <EmptyState
-              title="No matching tasks"
+              title="No tasks match your filters"
               description="Reset your filters or search terms to see the full implementation list."
             />
           ) : (
-            Object.entries(groupedTasks).map(([groupName, groupItems]) => (
-              <section key={groupName} className="space-y-4">
-                <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border/40 bg-card/60 py-3 backdrop-blur-xl">
-                  <div className="flex items-center gap-3">
-                    <div className="bg-primary/10 p-1.5 rounded-lg">
-                      <ListChecks className="h-4 w-4 text-primary" />
-                    </div>
-                    <h3 className="text-sm font-bold text-foreground/90 uppercase tracking-widest">
-                      {groupName}
-                    </h3>
-                  </div>
-                  <span className="text-[10px] font-black text-muted-foreground/40 px-2 py-0.5 border border-border/40 rounded-full">
-                    {groupItems.length}
-                  </span>
-                </div>
+            Object.entries(groupedTasks).map(([groupName, groupItems]) => {
+              const topTier = groupItems.find(t => t.priority_tier === "P0") ? "P0" : 
+                            groupItems.find(t => t.priority_tier === "P1") ? "P1" : "P2";
+              
+              // Extract DoD items from the first task that has them (usually the Core task)
+              const coreTask = groupItems.find(t => (t.dod_items || []).length > 0);
+              const dod = coreTask?.dod_items || [];
 
-                <div className="space-y-4 pt-1">
-                  {groupItems.map((task) => (
-                    <TaskItem
-                      key={task.id}
-                      task={task}
-                      sourceNodeLabel={
-                        task.source_node_id
-                          ? (nodes.find((sn) => sn.id === task.source_node_id)?.label ?? "Unknown")
-                          : "Manual"
-                      }
-                      onUpdate={updateTask}
-                      onDelete={deleteTask}
-                    />
-                  ))}
-                </div>
-              </section>
-            ))
+              const handleToggleDoD = async (index: number) => {
+                if (!coreTask) return;
+                const newDod = [...dod];
+                newDod[index] = { ...newDod[index], done: !newDod[index].done };
+                await updateTask(coreTask.id, { dod_items: newDod });
+              };
+
+              return (
+                <section key={groupName} className="space-y-6">
+                  <div className="sticky top-0 z-10 bg-card/60 backdrop-blur-xl py-4 border-b border-border/40">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className={`p-2 rounded-xl transition-all ${
+                          topTier === "P0" ? "bg-red-500/10 text-red-600 shadow-[0_0_15px_rgba(239,68,68,0.1)]" :
+                          topTier === "P1" ? "bg-amber-500/10 text-amber-600" :
+                          "bg-blue-500/10 text-blue-600"
+                        }`}>
+                          <span className="text-xs font-black tracking-tighter">{topTier}</span>
+                        </div>
+                        <div>
+                          <h3 className="text-base font-bold text-foreground tracking-tight">
+                            {groupName}
+                          </h3>
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-black text-muted-foreground/40 px-2 py-1 border border-border/40 rounded-lg bg-background/50">
+                        {groupItems.length} items
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4">
+                    {groupItems.map((task) => (
+                      <TaskItem
+                        key={task.id}
+                        task={task}
+                        sourceNodeLabel={
+                          task.source_node_id
+                            ? (nodes.find((sn) => sn.id === task.source_node_id)?.label ?? "Unknown")
+                            : "Manual"
+                        }
+                        onUpdate={updateTask}
+                        onDelete={deleteTask}
+                      />
+                    ))}
+                  </div>
+
+                  {dod.length > 0 && (
+                    <div className="mt-8 rounded-[2rem] bg-muted/20 border border-border/40 p-8 space-y-4">
+                      <div className="flex items-center gap-2 text-muted-foreground/60">
+                        <ListChecks className="h-4 w-4" />
+                        <h4 className="text-[10px] font-black uppercase tracking-[0.2em]">Definition of Done</h4>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3">
+                        {dod.map((item, i) => (
+                          <button 
+                            key={i} 
+                            onClick={() => handleToggleDoD(i)}
+                            className="flex items-start gap-3 group text-left transition-all"
+                          >
+                            <span className={`mt-1 h-3.5 w-3.5 rounded border transition-colors shrink-0 flex items-center justify-center ${
+                              item.done ? "bg-primary border-primary" : "border-border/60 group-hover:border-primary/40"
+                            }`}>
+                              {item.done && <CheckCircle2 className="h-2.5 w-2.5 text-primary-foreground" />}
+                            </span>
+                            <span className={`text-xs leading-relaxed transition-colors ${
+                              item.done ? "text-muted-foreground/40 line-through" : "text-muted-foreground/70 group-hover:text-foreground"
+                            }`}>
+                              {item.text}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </section>
+              );
+            })
           )}
         </div>
       </div>

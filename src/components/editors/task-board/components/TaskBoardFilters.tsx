@@ -113,6 +113,7 @@ export function TaskBoardFilters({
               <SelectValue placeholder="Group" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="feature">Feature</SelectItem>
               <SelectItem value="layer">Layer</SelectItem>
               <SelectItem value="source">Source</SelectItem>
               <SelectItem value="story">Story</SelectItem>

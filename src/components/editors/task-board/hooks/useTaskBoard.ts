@@ -26,7 +26,7 @@ export function useTaskBoard(node: NodeData) {
   const [tasks, setTasks] = useState<TaskData[]>([]);
   const [nodes, setNodes] = useState<NodeData[]>([]);
   const [isRegenerating, setIsRegenerating] = useState(false);
-  const [grouping, setGrouping] = useState<GroupingMode>("layer");
+  const [grouping, setGrouping] = useState<GroupingMode>("feature");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>("all");
@@ -40,6 +40,11 @@ export function useTaskBoard(node: NodeData) {
     ]);
 
     const sorted = [...projectTasks].sort((a, b) => {
+      // Sort by Tier first (P0 -> P3)
+      const tierA = a.priority_tier || "P1";
+      const tierB = b.priority_tier || "P1";
+      if (tierA !== tierB) return tierA.localeCompare(tierB);
+
       const priorityA = PRIORITY_ORDER[normalizePriority(a.priority)] ?? 99;
       const priorityB = PRIORITY_ORDER[normalizePriority(b.priority)] ?? 99;
 
@@ -85,6 +90,7 @@ export function useTaskBoard(node: NodeData) {
         normalizedQuery.length === 0 ||
         task.title.toLowerCase().includes(normalizedQuery) ||
         task.description.toLowerCase().includes(normalizedQuery) ||
+        (task.feature_name || "").toLowerCase().includes(normalizedQuery) ||
         task.group_key.toLowerCase().includes(normalizedQuery) ||
         sourceNodeLabel.toLowerCase().includes(normalizedQuery) ||
         task.labels.some((l) => l.toLowerCase().includes(normalizedQuery));
@@ -124,6 +130,8 @@ export function useTaskBoard(node: NodeData) {
       title: "New Manual Task",
       description: "",
       group_key: "Manual",
+      feature_name: "General",
+      priority_tier: "P1",
       priority: "should",
       status: "todo",
       labels: [],
@@ -146,6 +154,7 @@ export function useTaskBoard(node: NodeData) {
       const allParsedTasks: TaskData[] = [];
       const now = new Date().toISOString();
 
+      // Collect all tasks from all nodes
       for (const sourceNode of nodes) {
         const content = allContents.find((item) => item.node_id === sourceNode.id);
         if (!content) continue;
@@ -157,11 +166,14 @@ export function useTaskBoard(node: NodeData) {
           sort_order: index,
           created_at: now,
           updated_at: now,
-        }));
+        } as TaskData));
         allParsedTasks.push(...mapped);
       }
 
-      if (allParsedTasks.length > 0) await db.tasks.bulkAdd(allParsedTasks);
+      // Final insertion
+      if (allParsedTasks.length > 0) {
+        await db.tasks.bulkAdd(allParsedTasks);
+      }
       await loadTasks();
     } finally {
       setIsRegenerating(false);

@@ -67,3 +67,22 @@ function computeSimilarity(a: string, b: string): number {
 
   return (2 * intersection) / (totalA + totalB);
 }
+
+/**
+ * Maps MoSCoW priority string to a P0-P3 tier.
+ */
+export function mapPriorityToTier(priority: string): "P0" | "P1" | "P2" | "P3" {
+  switch (priority?.toLowerCase()) {
+    case "must":
+      return "P0";
+    case "should":
+      return "P1";
+    case "could":
+      return "P2";
+    case "wont":
+      return "P3";
+    default:
+      return "P1";
+  }
+}
+

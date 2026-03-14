@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { TaskData } from "@/lib/db";
+import { mapPriorityToTier } from "./utils";
 
 export function generateFlowchartTasks(
   nodeId: string,
@@ -13,7 +14,7 @@ export function generateFlowchartTasks(
   const legacySteps = (fields.steps as any[]) || [];
   let order = 0;
 
-  const processSteps = (steps: any[]) => {
+  const processSteps = (steps: any[], featureName: string) => {
     steps.forEach((s: any) => {
       if (!s.label || s.type === "start" || s.type === "end") return;
       const isDecision = s.type === "decision";
@@ -26,7 +27,9 @@ export function generateFlowchartTasks(
         description: isDecision
           ? `Implement branching logic for: ${s.label}`
           : `Implement process: ${s.label}`,
-        group_key: "Implementation",
+        group_key: "Logic",
+        feature_name: featureName,
+        priority_tier: "P0",
         priority: "Must",
         labels: isDecision ? ["backend"] : ["backend", "frontend"],
         status: "todo",
@@ -37,9 +40,9 @@ export function generateFlowchartTasks(
   };
 
   if (flows.length > 0) {
-    flows.forEach((flow: any) => processSteps(flow.steps || []));
+    flows.forEach((flow: any) => processSteps(flow.steps || [], flow.name || "Business Logic"));
   } else {
-    processSteps(legacySteps);
+    processSteps(legacySteps, "Business Logic");
   }
 
   return tasks;

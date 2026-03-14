@@ -305,6 +305,15 @@ function WorkspaceContent({ projectId }: { projectId: string }) {
 
       const sourceStatus =
         dbNodes.find((n) => n.id === edge.source_node_id)?.status ?? "Empty";
+      const sourceType =
+        dbNodes.find((n) => n.id === edge.source_node_id)?.type ?? "custom";
+      const targetType =
+        dbNodes.find((n) => n.id === edge.target_node_id)?.type ?? "custom";
+
+      // Filter warnings relevant to this connection
+      const relevantWarnings = dbWarnings.filter(
+        (w) => w.source_node_id === edge.source_node_id && w.target_node_type === targetType
+      );
 
       const markerColor =
         sourceStatus === "Done" ? "#22c55e"
@@ -319,7 +328,7 @@ function WorkspaceContent({ projectId }: { projectId: string }) {
         targetHandle,
         type: "archway",
         animated: true,
-        data: { sourceStatus },
+        data: { sourceStatus, sourceType, targetType, warnings: relevantWarnings },
         markerEnd: {
           type: MarkerType.Arrow,
           width: 20,

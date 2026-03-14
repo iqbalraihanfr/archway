@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { TaskData } from "@/lib/db";
+import { mapPriorityToTier } from "./utils";
 
 export function generateSequenceTasks(
   nodeId: string,
@@ -27,6 +28,8 @@ export function generateSequenceTasks(
         title: `Setup ${name} module`,
         description: `Initialize and configure the ${name} service module.`,
         group_key: "Backend",
+        feature_name: "API & Infrastructure",
+        priority_tier: "P0",
         priority: "Must",
         labels: ["backend"],
         status: "todo",
@@ -52,7 +55,9 @@ export function generateSequenceTasks(
         source_item_id: `seq-api-${msgIdx}-${content.toLowerCase().replace(/\s+/g, "-").substring(0, 30)}`,
         title: `Create ${method} ${endpoint}`,
         description: `API endpoint: ${content} (${msg.from} → ${msg.to})`,
-        group_key: "Backend",
+        group_key: "API",
+        feature_name: "API & Infrastructure",
+        priority_tier: "P0",
         priority: "Must",
         labels: ["backend"],
         status: "todo",
@@ -67,8 +72,10 @@ export function generateSequenceTasks(
         source_item_id: `seq-msg-${msgIdx}`,
         title: `Implement: ${content}`,
         description: `Integration: ${msg.from} → ${msg.to}: ${content}`,
-        group_key: "API & Integration",
-        priority: "Must",
+        group_key: "Logic",
+        feature_name: "API & Infrastructure",
+        priority_tier: "P1",
+        priority: "Should",
         labels: ["backend"],
         status: "todo",
         is_manual: false,
@@ -87,7 +94,9 @@ export function generateSequenceTasks(
         source_item_id: `seq-alt-${groupLabel.toLowerCase().replace(/\s+/g, "-")}`,
         title: `Handle: ${groupLabel} error case`,
         description: `Error handling for alternative flow: ${groupLabel}`,
-        group_key: "Backend",
+        group_key: "Quality",
+        feature_name: "Quality & Performance",
+        priority_tier: "P1",
         priority: "Should",
         labels: ["backend"],
         status: "todo",
