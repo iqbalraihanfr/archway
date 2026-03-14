@@ -1,0 +1,8 @@
+node_modules
+.next
+.git
+.husky
+.gemini
+.claude
+.env*.local
+bun.lock

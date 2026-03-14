@@ -1,0 +1,19 @@
+#!/usr/bin/env sh
+
+# 1. Pastikan PATH terbaca (Fix untuk VS Code GUI)
+[ -f "$HOME/.profile" ] && . "$HOME/.profile"
+[ -f "$HOME/.zshrc" ] && . "$HOME/.zshrc"
+
+# 2. Defensive Check
+# Cek apakah bun command ada sebelum menjalankannya
+if ! command -v bun >/dev/null 2>&1; then
+  echo "❌ Error: Bun not found. Please install Bun or commit from the Terminal."
+  exit 1
+fi
+
+echo "Running pre-commit checks..."
+
+echo "Linting..."
+bun run lint || { echo "❌ Lint failed"; exit 1; }
+
+echo "✅ Ready to commit!"
